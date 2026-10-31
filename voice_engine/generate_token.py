@@ -57,3 +57,4 @@ if __name__ == "__main__":
     print(f"2. Enter your LiveKit Server URL and Token above.")
     print(f"3. Click Connect and speak into your mic in Hindi (e.g., 'भैया झाँसी में गेहूँ का भाव बताओ').")
     print("=" * 60 + "\n")
+

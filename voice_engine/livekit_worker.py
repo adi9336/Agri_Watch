@@ -25,7 +25,7 @@ if PARENT_DIR not in sys.path:
 from dotenv import load_dotenv
 load_dotenv(os.path.join(PARENT_DIR, ".env"))
 
-from livekit.agents import JobContext, WorkerOptions, cli
+from livekit.agents import JobContext, WorkerOptions, cli, AgentServer
 from livekit.agents.voice import AgentSession, Agent, UserInputTranscribedEvent
 from livekit.plugins import silero
 import livekit.plugins.gnani as gnani
@@ -36,6 +36,9 @@ from agents.observability import traceable
 
 logger = logging.getLogger("agriwatch-worker")
 logging.basicConfig(level=logging.INFO)
+
+# LiveKit Agent Server instance for lk CLI and production runner
+server = AgentServer()
 
 
 class AgriWatchVoiceAssistant:
@@ -67,6 +70,7 @@ class AgriWatchVoiceAssistant:
         return spoken_response
 
 
+@server.rtc_session(agent_name="agri_watch")
 async def entrypoint(ctx: JobContext):
     """LiveKit agent worker room entrypoint."""
     logger.info(f"Connecting to LiveKit room: {ctx.room.name}")
@@ -122,5 +126,5 @@ if __name__ == "__main__":
         print("[+] Voice Worker Pre-Flight PASSED.")
         sys.exit(0)
 
-    # Standard LiveKit CLI entrypoint (supports: dev, start, download-files)
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    # Standard LiveKit CLI entrypoint (supports: dev, start, download-files, lk console)
+    cli.run_app(server)
