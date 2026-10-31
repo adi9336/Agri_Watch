@@ -1,0 +1,11 @@
+# Core Real-Time Voice Infrastructure
+livekit-agents>=1.8.10
+livekit-plugins-gnani>=1.8.10
+livekit-plugins-silero>=1.8.10
+onnxruntime>=1.20.0
+
+# LLM Observability & Telemetry
+langsmith>=0.1.14
+requests>=2.31.0
+python-dotenv>=1.0.0
+pydantic>=2.7.0

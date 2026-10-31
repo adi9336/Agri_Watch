@@ -20,6 +20,7 @@ if PARENT_DIR not in sys.path:
 
 from mandi_tracker import MandiPriceService, normalize_date
 from agents.steering_router import SteeringRouter, CROP_SYNONYMS
+from agents.observability import traceable
 
 # Initialize underlying engines
 _router = SteeringRouter()
@@ -29,6 +30,7 @@ _service = _router.service
 # -------------------------------------------------------------------------
 # Tool 1: Get Crop Price
 # -------------------------------------------------------------------------
+@traceable(name="Agmarknet:get_crop_price", run_type="tool")
 def get_crop_price(
     crop: str,
     district: str,
@@ -77,6 +79,7 @@ def get_crop_price(
 # -------------------------------------------------------------------------
 # Tool 2: Compare Mandi Arbitrage
 # -------------------------------------------------------------------------
+@traceable(name="ArbitrageEngine:compare_mandi_arbitrage", run_type="tool")
 def compare_mandi_arbitrage(
     crop: str,
     district: str,
@@ -119,6 +122,7 @@ def compare_mandi_arbitrage(
 # -------------------------------------------------------------------------
 # Tool 3: Check Govt MSP Floor Price
 # -------------------------------------------------------------------------
+@traceable(name="MSPPolicy:check_msp_floor", run_type="tool")
 def check_msp_floor(crop: str) -> str:
     """
     Look up the official Government of India Minimum Support Price (MSP)
@@ -153,6 +157,7 @@ def check_msp_floor(crop: str) -> str:
 # -------------------------------------------------------------------------
 # Tool 4: Find Alternative Mandis for Crop
 # -------------------------------------------------------------------------
+@traceable(name="Agmarknet:find_alternative_mandis", run_type="tool")
 def find_alternative_mandis_for_crop(crop: str, state: str = "Uttar Pradesh") -> str:
     """
     Find active mandis in the state trading a specific commodity when that crop

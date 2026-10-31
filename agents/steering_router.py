@@ -23,6 +23,7 @@ if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
 from mandi_tracker import MandiPriceService, normalize_date
+from agents.observability import traceable
 
 MSP_FILE = os.path.join(PARENT_DIR, "data", "msp_benchmarks.json")
 
@@ -90,6 +91,7 @@ class SteeringRouter:
                 return data.get("2026_27", {})
         return {}
 
+    @traceable(name="NLU:parse_entities", run_type="parser")
     def parse_entities(self, query: str) -> Dict[str, Optional[str]]:
         """Extracts district, state, and crop from spoken natural language."""
         query_clean = query.lower()
