@@ -1,14 +1,13 @@
 """
-Agri_watch - Agent Tools for Market Intelligence & Mandi Data Ingestion
-Exposes callable tools for:
-1. LiveKit VoiceAssistant (@llm.function_tool)
-2. LangChain Agents (@tool)
-3. Direct Python / Multi-Agent Execution
+Agri_watch - Clean Specialist Tools for Market Intelligence & Data Ingestion
+Calls MandiPriceService directly without regex or legacy router dependencies.
+Exposes clean, structured JSON payloads for LLM Tool Calling and LiveKit.
 """
 
 import os
 import sys
 import json
+import re
 from typing import Dict, Any, Optional, List
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -19,16 +18,34 @@ if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
 from mandi_tracker import MandiPriceService, normalize_date
-from agents.steering_router import SteeringRouter, CROP_SYNONYMS
 from agents.observability import traceable
 
-# Initialize underlying engines
-_router = SteeringRouter()
-_service = _router.service
+MSP_FILE = os.path.join(PARENT_DIR, "data", "msp_benchmarks.json")
+_price_service = MandiPriceService()
+
+# Common Indic crop synonyms for tool input normalization
+CROP_NORM_MAP = {
+    "gehu": "Wheat", "gehun": "Wheat", "गेहूँ": "Wheat", "गेहू": "Wheat", "wheat": "Wheat",
+    "dhan": "Paddy", "धान": "Paddy", "chawal": "Paddy", "paddy": "Paddy",
+    "sarson": "Mustard", "सरसों": "Mustard", "mustard": "Mustard", "rai": "Mustard",
+    "chana": "Gram Raw(Chholia)", "चना": "Gram Raw(Chholia)",
+    "matar": "Peas(Dry)", "मटर": "Peas(Dry)",
+    "pyaz": "Onion", "प्याज": "Onion", "onion": "Onion",
+    "alu": "Potato", "आलू": "Potato", "potato": "Potato"
+}
+
+
+def clean_market_name(market: str) -> str:
+    """Removes APMC codes and bracketed noise for clean voice output."""
+    if not market:
+        return "मंडी"
+    clean = re.sub(r"\bAPMC\b", "", market, flags=re.IGNORECASE)
+    clean = re.sub(r"\(.*?\)", "", clean).strip()
+    return clean
 
 
 # -------------------------------------------------------------------------
-# Tool 1: Get Crop Price
+# Tool 1: Get Crop Price (Clean, factual, single-purpose)
 # -------------------------------------------------------------------------
 @traceable(name="Agmarknet:get_crop_price", run_type="tool")
 def get_crop_price(
@@ -38,46 +55,71 @@ def get_crop_price(
     date: Optional[str] = None
 ) -> str:
     """
-    Fetch the latest wholesale APMC mandi price, variety, min price, max price,
-    and modal benchmark price for any agricultural commodity from Agmarknet.
-
-    Args:
-        crop: Name of the crop (e.g. Wheat, Paddy, Mustard, Onion, Gram Raw, Maize).
-        district: Name of the district (e.g. Jhansi, Etah, Prayagraj, Sambhal, Rajkot).
-        state: Name of the Indian state (default: "Uttar Pradesh").
-        date: Optional date in DD/MM/YYYY or 'today' (default: None for today/latest).
-
-    Returns:
-        JSON string containing matching mandi records, arrival date, and modal prices.
+    Fetch the latest wholesale APMC mandi price and modal rate for any crop in a district.
+    Call this when a farmer asks for the price or rate of a specific crop.
     """
-    # Normalize crop name using Indic synonyms
-    norm_crop = CROP_SYNONYMS.get(crop.lower(), crop)
-    res = _router.process_request(state=state, district=district, crop=norm_crop, date=date)
-    
-    output = {
-        "crop": res["crop"],
-        "district": res["district"],
-        "state": res["state"],
-        "reporting_date": res["reporting_date"],
-        "is_live_today": res["is_live"],
-        "records_count": res["records_count"],
-        "mandis": [
-            {
-                "market": r.get("market"),
-                "variety": r.get("variety"),
-                "modal_price_rs_per_quintal": r.get("modal_price"),
-                "min_price": r.get("min_price"),
-                "max_price": r.get("max_price"),
-                "arrival_date": r.get("arrival_date")
-            } for r in res.get("records", [])[:5]
-        ],
-        "spoken_summary_hi": res["spoken_hindi_response"]
-    }
-    return json.dumps(output, ensure_ascii=False, indent=2)
+    norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
+    records = []
+    is_live = False
+    reporting_date = None
+
+    # Try live data.gov.in API
+    if _price_service.api_key and (not date or date.lower() == "today"):
+        try:
+            direct, state_wide, rep_date = _price_service.fetch_live_prices(state, district, norm_crop)
+            if direct:
+                records = direct
+                is_live = True
+                reporting_date = rep_date
+            elif state_wide:
+                records = state_wide
+                reporting_date = rep_date
+        except Exception:
+            pass
+
+    # Historical fallback
+    if not records:
+        norm_date = normalize_date(date) if date and date.lower() != "today" else None
+        hist_records, _ = _price_service.fetch_historical(state, district, norm_crop, target_date=norm_date)
+        records = hist_records
+        if records:
+            reporting_date = records[0].get("arrival_date")
+
+    if not records:
+        return json.dumps({
+            "status": "not_found",
+            "crop": norm_crop,
+            "district": district,
+            "message": f"{district} मंडी में {norm_crop} का भाव उपलब्ध नहीं है।"
+        }, ensure_ascii=False)
+
+    top = records[0]
+    market = clean_market_name(top.get("market", district))
+    variety = re.sub(r"\(.*?\)", "", top.get("variety", "सामान्य")).strip()
+
+    try:
+        modal_p = float(top.get("modal_price", 0))
+        min_p = float(top.get("min_price", 0))
+        max_p = float(top.get("max_price", 0))
+    except (ValueError, TypeError):
+        modal_p = min_p = max_p = 0
+
+    return json.dumps({
+        "status": "success",
+        "crop": norm_crop,
+        "district": district,
+        "market": market,
+        "variety": variety,
+        "modal_price": modal_p,
+        "min_price": min_p,
+        "max_price": max_p,
+        "is_live_today": is_live,
+        "date": reporting_date
+    }, ensure_ascii=False)
 
 
 # -------------------------------------------------------------------------
-# Tool 2: Compare Mandi Arbitrage
+# Tool 2: Compare Mandi Arbitrage (Only when asked where to sell / comparison)
 # -------------------------------------------------------------------------
 @traceable(name="ArbitrageEngine:compare_mandi_arbitrage", run_type="tool")
 def compare_mandi_arbitrage(
@@ -88,160 +130,117 @@ def compare_mandi_arbitrage(
 ) -> str:
     """
     Compare commodity prices across multiple APMC mandis within a district
-    or neighboring region to find the highest-paying market and calculate transport net profit.
-
-    Args:
-        crop: Name of the crop (e.g. Wheat, Mustard, Paddy, Groundnut).
-        district: Home district (e.g. Jhansi, Rajkot, Karnal).
-        state: State name (default: "Uttar Pradesh").
-        quantity_quintals: Farmer produce quantity in quintals (default: 25.0).
-
-    Returns:
-        JSON string with top buyer mandi, price spread, and estimated net gain.
+    to find the highest-paying market and calculate transport net profit.
+    Call this ONLY when a farmer asks where to sell, asks for higher profit, or asks to compare mandis.
     """
-    norm_crop = CROP_SYNONYMS.get(crop.lower(), crop)
-    res = _router.process_request(state=state, district=district, crop=norm_crop)
-    arb = res.get("arbitrage", {})
-    
-    output = {
+    norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
+    records = []
+
+    if _price_service.api_key:
+        try:
+            direct, state_wide, _ = _price_service.fetch_live_prices(state, district, norm_crop)
+            records = direct or state_wide or []
+        except Exception:
+            pass
+
+    if not records:
+        hist_records, _ = _price_service.fetch_historical(state, district, norm_crop)
+        records = hist_records or []
+
+    # Group by market and keep latest record per market
+    market_latest = {}
+    for r in records:
+        m_name = clean_market_name(r.get("market", ""))
+        if not m_name or m_name in market_latest:
+            continue
+        try:
+            modal = float(r.get("modal_price", 0))
+            if modal > 0:
+                market_latest[m_name] = modal
+        except (ValueError, TypeError):
+            continue
+
+    if len(market_latest) < 2:
+        return json.dumps({
+            "status": "insufficient_mandis",
+            "message": f"{district} क्षेत्र की सभी मंडियों में भाव लगभग एक समान है।"
+        }, ensure_ascii=False)
+
+    sorted_mandis = sorted(market_latest.items(), key=lambda x: x[1], reverse=True)
+    top_market, top_price = sorted_mandis[0]
+    low_market, low_price = sorted_mandis[-1]
+    spread = top_price - low_price
+
+    # Transport deduction: Rs 15/quintal
+    freight = 15.0
+    net_gain = (spread - freight) * quantity_quintals if spread > freight else 0.0
+
+    return json.dumps({
+        "status": "success",
         "crop": norm_crop,
         "district": district,
-        "reporting_date": res.get("reporting_date"),
-        "top_market": arb.get("top_market"),
-        "top_price_rs_per_q": arb.get("top_modal"),
-        "lowest_market": arb.get("lowest_market"),
-        "lowest_price_rs_per_q": arb.get("lowest_modal"),
-        "price_spread_rs_per_q": arb.get("spread"),
-        "arbitrage_recommended": arb.get("recommend_arbitrage", False),
-        "estimated_net_gain_for_trolley_load_rs": arb.get("estimated_net_gain_25q"),
-        "advice_hi": res.get("spoken_hindi_response")
-    }
-    return json.dumps(output, ensure_ascii=False, indent=2)
+        "best_market": top_market,
+        "best_price": top_price,
+        "comparison_market": low_market,
+        "comparison_price": low_price,
+        "price_difference": spread,
+        "net_gain_on_trolley_rs": net_gain,
+        "recommend_travel": spread > 30.0
+    }, ensure_ascii=False)
 
 
 # -------------------------------------------------------------------------
-# Tool 3: Check Govt MSP Floor Price
+# Tool 3: Check MSP Floor (Only when asked about government MSP / floor rate)
 # -------------------------------------------------------------------------
-@traceable(name="MSPPolicy:check_msp_floor", run_type="tool")
+@traceable(name="MSPEngine:check_msp_floor", run_type="tool")
 def check_msp_floor(crop: str) -> str:
     """
-    Look up the official Government of India Minimum Support Price (MSP)
-    for 2026-27 to check if market auction bids are below the government safety net.
-
-    Args:
-        crop: Name of the crop (e.g. Wheat, Paddy, Mustard, Barley, Gram).
-
-    Returns:
-        JSON string with official MSP rate, season (Rabi/Kharif), and Hindi crop name.
+    Look up the official Government Minimum Support Price (MSP) floor rate for a crop.
+    Call this ONLY when a farmer asks about MSP, government rate, or minimum guaranteed price.
     """
-    norm_crop = CROP_SYNONYMS.get(crop.lower(), crop)
-    msp_val = _router.get_msp(norm_crop)
-    
-    if msp_val:
-        output = {
+    norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
+
+    msp_data = {}
+    if os.path.exists(MSP_FILE):
+        with open(MSP_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            msp_data = data.get("2026_27", {})
+
+    found_info = None
+    for k, v in msp_data.items():
+        if k.lower() in norm_crop.lower() or norm_crop.lower() in k.lower():
+            found_info = v
+            break
+
+    if not found_info:
+        return json.dumps({
+            "status": "not_notified",
             "crop": norm_crop,
-            "msp_rate_rs_per_quintal": msp_val,
-            "season": "Rabi" if norm_crop in ("Wheat", "Mustard", "Barley(Jau)", "Gram Raw(Chholia)", "Masur Dal") else "Kharif",
-            "government_floor_status": "Active 2026-27 Government Procurement Guarantee",
-            "notice_hi": f"सरकारी समर्थन मूल्य (MSP) ₹{msp_val} प्रति क्विंटल निर्धारित है।"
-        }
-    else:
-        output = {
-            "crop": norm_crop,
-            "msp_rate_rs_per_quintal": None,
-            "notice_hi": f"{norm_crop} के लिए कोई प्रत्यक्ष MSP दर अधिसूचित नहीं है (व्यापार बाजार भाव पर होता है)।"
-        }
-    return json.dumps(output, ensure_ascii=False, indent=2)
+            "message": f"{norm_crop} के लिए कोई प्रत्यक्ष सरकारी MSP अधिसूचित नहीं है।"
+        }, ensure_ascii=False)
 
-
-# -------------------------------------------------------------------------
-# Tool 4: Find Alternative Mandis for Crop
-# -------------------------------------------------------------------------
-@traceable(name="Agmarknet:find_alternative_mandis", run_type="tool")
-def find_alternative_mandis_for_crop(crop: str, state: str = "Uttar Pradesh") -> str:
-    """
-    Find active mandis in the state trading a specific commodity when that crop
-    is not cultivated or has no arrivals in the farmer's immediate district (e.g. Paddy in Jhansi).
-
-    Args:
-        crop: Crop name (e.g. Paddy, Basmati, Cotton).
-        state: State name (default: "Uttar Pradesh").
-
-    Returns:
-        JSON string listing the closest active mandis trading that crop with latest prices.
-    """
-    norm_crop = CROP_SYNONYMS.get(crop.lower(), crop)
-    alternatives = []
-    
-    # 1. Try live state-level Agmarknet records
-    try:
-        _, state_matches, _ = _service.fetch_live_prices(state=state, crop=norm_crop)
-    except Exception:
-        state_matches = []
-        
-    # 2. Fall back to historical database if live is unavailable/empty
-    if not state_matches:
-        hist_records, _ = _service.fetch_historical(state=state, crop=norm_crop, max_results=10)
-        state_matches = hist_records
-        
-    for r in state_matches[:8]:
-        alternatives.append({
-            "market": r.get("market"),
-            "district": r.get("district"),
-            "state": r.get("state"),
-            "crop": r.get("commodity"),
-            "variety": r.get("variety"),
-            "modal_price": r.get("modal_price"),
-            "date": r.get("arrival_date")
-        })
-
-    output = {
+    return json.dumps({
+        "status": "success",
         "crop": norm_crop,
-        "state": state,
-        "alternative_mandis_count": len(alternatives),
-        "mandis": alternatives
-    }
-    return json.dumps(output, ensure_ascii=False, indent=2)
+        "msp_rate_per_quintal": found_info.get("msp"),
+        "season": found_info.get("season", "Rabi")
+    }, ensure_ascii=False)
 
 
-# -------------------------------------------------------------------------
-# LiveKit FunctionTool Decorator Exports
-# -------------------------------------------------------------------------
+# LiveKit Tools Export
 try:
     from livekit.agents import llm
-    
-    get_crop_price_tool = llm.function_tool(description="Fetch wholesale mandi price and variety for a crop in a district.")(get_crop_price)
-    compare_mandi_arbitrage_tool = llm.function_tool(description="Compare prices across mandis in a district to find the highest bidder and transport profit.")(compare_mandi_arbitrage)
+    get_crop_price_tool = llm.function_tool(description="Fetch wholesale mandi price for a crop in a district.")(get_crop_price)
+    compare_mandi_arbitrage_tool = llm.function_tool(description="Compare prices across nearby mandis.")(compare_mandi_arbitrage)
     check_msp_floor_tool = llm.function_tool(description="Look up official Government MSP floor rate for a crop.")(check_msp_floor)
-    find_alternative_mandis_tool = llm.function_tool(description="Find active mandis in the state when a crop has no local arrivals.")(find_alternative_mandis_for_crop)
-    
-    LIVEKIT_TOOLS = [
-        get_crop_price_tool,
-        compare_mandi_arbitrage_tool,
-        check_msp_floor_tool,
-        find_alternative_mandis_tool
-    ]
-except Exception as e:
+    LIVEKIT_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool]
+except Exception:
     LIVEKIT_TOOLS = []
 
 
 if __name__ == "__main__":
-    print("[*] Testing Agent Tools Module...\n")
-    
-    # Test 1: get_crop_price
-    print("--- Test 1: get_crop_price(Wheat, Jhansi) ---")
-    p_data = get_crop_price("Wheat", "Jhansi")
-    print(p_data[:300] + "...\n")
-    
-    # Test 2: compare_mandi_arbitrage
-    print("--- Test 2: compare_mandi_arbitrage(Wheat, Jhansi) ---")
-    a_data = compare_mandi_arbitrage("Wheat", "Jhansi")
-    print(a_data + "\n")
-    
-    # Test 3: check_msp_floor
-    print("--- Test 3: check_msp_floor(Mustard) ---")
-    m_data = check_msp_floor("Mustard")
-    print(m_data + "\n")
-    
-    # Test 4: LiveKit Tool Exports
-    print(f"[+] LiveKit Tools Exported: {len(LIVEKIT_TOOLS)} tools ready.")
+    print("[*] Testing Clean Modular Tools...")
+    print("Price Tool:", get_crop_price("Wheat", "Jhansi"))
+    print("\nArbitrage Tool:", compare_mandi_arbitrage("Wheat", "Jhansi"))
+    print("\nMSP Tool:", check_msp_floor("Wheat"))
+

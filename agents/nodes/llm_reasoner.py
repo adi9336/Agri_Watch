@@ -49,23 +49,23 @@ def check_msp_floor_tool(crop: str) -> str:
 LANGCHAIN_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool]
 TOOL_MAP = {t.name: t for t in LANGCHAIN_TOOLS}
 
-# 2. Sovereign Indic System Prompt
-SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भारतीय किसानों और ग्रामीण व्यापारियों के लिए आधिकारिक स्वतंत्र मंडी, आर्बिट्रेज और MSP सलाहकार।
-आप सदैव सरल, आदरणीय, स्पष्ट और ठेठ ग्रामीण हिंदी में बात करते हैं।
+# 2. Sovereign Indic System Prompt (Strictly optimized for Voice Output)
+SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भारतीय किसानों के लिए एक सरल, सटीक और संक्षेप में बोलने वाले वॉयस असिस्टेंट (Voice Agent)।
+आपका उत्तर सीधे स्पीकर पर आवाज़ (TTS) द्वारा किसान को सुनाया जाता है। इसलिए आपके जवाब बहुत छोटे, सीधे और केवल पूछे गए सवाल तक सीमित होने चाहिए।
 
-आपके पास तीन प्रमुख टूल्स (Tools) हैं:
-1. get_crop_price_tool: किसी जिले में किसी फसल (गेहूँ, धान, सरसों, चना, आदि) का ताज़ा मंडी भाव, न्यूनतम-अधिकतम व औसत (Modal) रेट पता करना।
-2. compare_mandi_arbitrage_tool: आसपास की मंडियों के बीच भाव की तुलना करना, सबसे ज्यादा दाम देने वाली मंडी खोजना और ट्रैक्टर/ट्रॉली भाड़ा काटकर शुद्ध मुनाफा बताना।
-3. check_msp_floor_tool: भारत सरकार का आधिकारिक न्यूनतम समर्थन मूल्य (MSP 2026-27) चेक करना ताकि किसान को कम दाम पर न बेचना पड़े।
-
-नियम:
-1. जब किसान किसी फसल का भाव पूछे, तो तुरंत `get_crop_price_tool` चलाएं।
-2. जब किसान पूछे कि 'कहाँ बेचूँ', 'कहाँ ज्यादा फायदा होगा', या मंडियों की तुलना करे, तो `compare_mandi_arbitrage_tool` चलाएं।
-3. जब किसान MSP या सरकारी भाव पूछे, तो `check_msp_floor_tool` चलाएं।
-4. यदि किसान ने केवल जिला बताया और फसल नहीं बताई (या अधूरी बात की), तो मन से फसल न चुनें - सम्मानपूर्वक पूछें: "किसान भाई, आप किस फसल का भाव जानना चाहते हैं?"
-5. यदि किसान केवल अभिवादन करे (जैसे "नमस्ते", "राम-राम", "हेलो"), तो आदरपूर्वक उत्तर दें और पूछें कि वे किस फसल का भाव जानना चाहते हैं।
-6. यदि किसान पूर्व बातचीत के बाद "हाँ ठीक है", "बताओ" कहे, तो पिछली फसल को दोहराने के बजाय पूछें कि क्या वे किसी दूसरी फसल का भाव जानना चाहते हैं।
-7. अंतिम उत्तर हमेशा आवाज़ (TTS) के लिए अनुकूलित शुद्ध हिंदी में दें। भाव को '₹X प्रति क्विंटल' स्पष्ट कहें।
+सख्त नियम (STRICT VOICE AGENT RULES):
+1. केवल वही बताएं जो किसान ने पूछा है (कदापि बिना पूछे अतिरिक्त विवरण न दें):
+   - यदि किसान केवल किसी फसल का भाव पूछे (जैसे 'झाँसी में गेहूँ का क्या रेट है?'): तो केवल उस जिले/मंडी का औसत भाव 1 या 2 छोटे वाक्यों में बताएं। उदाहरण: 'किसान भाई, झाँसी मंडी में गेहूँ का भाव ₹2,600 प्रति क्विंटल है।'
+   - बिना पूछे अपने मन से कभी भी MSP की बात न जोड़ें, न ही दूसरी मंडियों की तुलना करें।
+   - जब किसान स्पष्ट पूछे कि 'कहाँ बेचूँ', 'मुनाफा कहाँ है', या मंडियों की तुलना करे: केवल तभी `compare_mandi_arbitrage_tool` चलाएं और सबसे ज्यादा दाम देने वाली मंडी बताएं।
+   - जब किसान 'सरकारी भाव' या 'MSP' पूछे: केवल तभी `check_msp_floor_tool` चलाएं।
+2. उत्तर की लंबाई: अधिकतम 1 से 2 छोटे वाक्य। कोई लंबा पैराग्राफ, तारीखों की भरमार या लिस्ट नहीं देनी है।
+3. वाक्-अनुकूल (Voice Friendly) फॉर्मेटिंग:
+   - कोई मार्कडाउन चिन्ह (जैसे **, *, #, बुलेट पॉइंट्स) न लगाएं।
+   - कोई इमोजी (जैसे 🙏) न लगाएं, क्योंकि वॉयस इंजन उन्हें गलत बोलता है।
+   - भाव को हमेशा '₹X प्रति क्विंटल' साफ़ और साधारण हिंदी में लिखें।
+4. यदि किसान ने फसल का नाम न बताया हो (जैसे केवल 'झाँसी का भाव बताओ'), तो मन से फसल का अनुमान न लगाएं। तुरंत पूछें: 'किसान भाई, आप झाँसी मंडी में किस फसल का भाव जानना चाहते हैं?'
+5. यदि किसान केवल 'हाँ', 'ठीक है', 'अच्छा', 'बताओ' या 'ok' कहे, तो पुराना भाव कभी भी दोबारा न दोहराएं। उनसे पूछें: 'जी भाई, क्या आप किसी अन्य फसल या दूसरी मंडी का भाव जानना चाहते हैं?'
 """
 
 _active_groq_model: Optional[str] = None
@@ -144,9 +144,12 @@ def groq_reasoner_node(state: AgentState) -> Dict[str, Any]:
     query = state.get("user_query", "").strip()
     session_ctx = state.get("session_context") or {}
 
-    # Build context message
+    # Build context message intelligently
     context_hint = ""
-    if session_ctx.get("crop") or session_ctx.get("district"):
+    is_affirmation = any(w in query.lower() for w in ["हाँ", "ठीक है", "अच्छा", "ok", "okay", "theek hai"]) and len(query.split()) <= 4
+    if is_affirmation and session_ctx.get("crop"):
+        context_hint = f"\n[पिछला संदर्भ: किसान को पहले {session_ctx.get('crop')} का भाव दिया जा चुका है। अब वे केवल 'हाँ/ठीक है' बोल रहे हैं। भाव दोबारा बिल्कुल न दोहराएं, केवल पूछें कि क्या वे किसी दूसरी फसल या मंडी का भाव जानना चाहते हैं।]"
+    elif session_ctx.get("crop") or session_ctx.get("district"):
         context_hint = f"\n[पिछला संदर्भ: फसल={session_ctx.get('crop')}, जिला={session_ctx.get('district')}]"
 
     messages = [
@@ -178,26 +181,62 @@ def groq_reasoner_node(state: AgentState) -> Dict[str, Any]:
             final_ai_msg: AIMessage = llm.invoke(messages)
             spoken_response = final_ai_msg.content.strip()
 
-            # Update persistent context if extracted
+            # Update persistent context and deduce intent
             updated_ctx = dict(session_ctx)
+            extracted_crop = None
+            extracted_dist = None
+            detected_intent = "PRICE_INQUIRY"
+
             for tc in ai_msg.tool_calls:
+                t_name = tc.get("name", "")
+                if "arbitrage" in t_name:
+                    detected_intent = "ARBITRAGE"
+                elif "msp" in t_name:
+                    detected_intent = "MSP"
+                elif "price" in t_name:
+                    detected_intent = "PRICE_INQUIRY"
+
                 args = tc.get("args", {})
                 if "crop" in args:
-                    updated_ctx["crop"] = args["crop"]
+                    extracted_crop = args["crop"]
+                    updated_ctx["crop"] = extracted_crop
                 if "district" in args:
-                    updated_ctx["district"] = args["district"]
+                    extracted_dist = args["district"]
+                    updated_ctx["district"] = extracted_dist
 
             return {
                 "spoken_hindi_response": spoken_response,
+                "intent": detected_intent,
+                "crop": extracted_crop or updated_ctx.get("crop"),
+                "district": extracted_dist or updated_ctx.get("district"),
                 "status": "success",
                 "session_context": updated_ctx
             }
 
-        # Direct conversational response (e.g. greeting or clarification prompt)
+        # Direct conversational response (e.g. greeting, affirmation, or clarification prompt)
         spoken_response = ai_msg.content.strip()
+        resp_lower = spoken_response.lower()
+
+        if is_affirmation:
+            conv_intent = "CONTINUATION"
+            conv_status = "success"
+        elif any(w in query.lower() for w in ["राम", "नमस्ते", "नमस्कार", "hello", "hi"]):
+            conv_intent = "GREETING"
+            conv_status = "success"
+        elif "फसल" in spoken_response or "जिला" in spoken_response or "?" in spoken_response:
+            conv_intent = "CLARIFICATION"
+            conv_status = "clarification"
+        else:
+            conv_intent = "CONVERSATION"
+            conv_status = "success"
+
         return {
             "spoken_hindi_response": spoken_response,
-            "status": "success"
+            "intent": conv_intent,
+            "crop": session_ctx.get("crop"),
+            "district": session_ctx.get("district"),
+            "status": conv_status,
+            "session_context": session_ctx
         }
 
     except Exception as e:
