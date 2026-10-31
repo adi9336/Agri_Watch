@@ -1,9 +1,12 @@
 """
 Agri_watch - LangGraph Multi-Agent Cognitive Pipeline
-Assembles and compiles the StateGraph connecting Indic NLU, Guardrail Clarification,
-Specialist Price/Arbitrage/MSP nodes, and Indic Spoken Synthesis.
+Combines:
+1. Groq LLM (Llama-3.3-70b) Autonomous Reasoning & Native Tool Calling (when GROQ_API_KEY is active)
+2. Sovereign Indic State Fallback Pipeline (NLU, Clarification, Specialist Nodes, Synthesizer)
 """
 
+import os
+import logging
 from typing import Dict, Any, Optional
 from langgraph.graph import StateGraph, START, END
 
@@ -15,6 +18,23 @@ from agents.nodes.price_specialist import price_specialist_node
 from agents.nodes.arbitrage_specialist import arbitrage_specialist_node
 from agents.nodes.msp_specialist import msp_specialist_node
 from agents.nodes.synthesizer import synthesizer_node
+from agents.nodes.llm_reasoner import groq_reasoner_node
+
+logger = logging.getLogger("agriwatch.graph")
+
+
+def entry_router(state: AgentState) -> str:
+    """Routes to Groq LLM reasoner if GROQ_API_KEY is set, else sovereign NLU."""
+    if os.getenv("GROQ_API_KEY"):
+        return "groq_reasoner"
+    return "nlu"
+
+
+def route_after_groq(state: AgentState) -> str:
+    """Checks if Groq succeeded or needs fallback to sovereign Indic pipeline."""
+    if state.get("status") == "llm_fallback":
+        return "nlu"
+    return END
 
 
 def route_after_nlu(state: AgentState) -> str:
@@ -39,6 +59,7 @@ def build_agriwatch_graph():
     workflow = StateGraph(AgentState)
 
     # 1. Register Nodes
+    workflow.add_node("groq_reasoner", groq_reasoner_node)
     workflow.add_node("nlu", nlu_node)
     workflow.add_node("clarification", clarification_node)
     workflow.add_node("greeting", greeting_node)
@@ -47,10 +68,27 @@ def build_agriwatch_graph():
     workflow.add_node("msp_specialist", msp_specialist_node)
     workflow.add_node("synthesizer", synthesizer_node)
 
-    # 2. Define Edges & Flow
-    workflow.add_edge(START, "nlu")
+    # 2. Define Routing & Edges
+    workflow.add_conditional_edges(
+        START,
+        entry_router,
+        {
+            "groq_reasoner": "groq_reasoner",
+            "nlu": "nlu"
+        }
+    )
 
-    # Conditional branching from NLU
+    # Branching from Groq LLM Node
+    workflow.add_conditional_edges(
+        "groq_reasoner",
+        route_after_groq,
+        {
+            "nlu": "nlu",
+            END: END
+        }
+    )
+
+    # Conditional branching from Sovereign Indic NLU
     workflow.add_conditional_edges(
         "nlu",
         route_after_nlu,
@@ -88,7 +126,7 @@ def get_agriwatch_graph():
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding='utf-8')
-    print("[*] Testing Agri_watch LangGraph Compilation & Execution...")
+    print("[*] Testing Agri_watch LangGraph (with Groq LLM integration)...")
 
     graph = get_agriwatch_graph()
     test_queries = [
@@ -110,8 +148,4 @@ if __name__ == "__main__":
         }
         output = graph.invoke(state_input)
         session_ctx = output.get("session_context", {})
-        print(f"Intent : {output.get('intent')}")
-        print(f"Crop   : {output.get('crop')} ({output.get('crop_hindi')})")
-        print(f"Dist   : {output.get('district')} ({output.get('district_hindi')})")
         print(f"Spoken : {output.get('spoken_hindi_response')}")
-
