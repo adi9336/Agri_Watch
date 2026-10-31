@@ -4,7 +4,8 @@ Integrates:
 1. Silero VAD (Voice Activity Detection & sub-100ms Barge-in Interruption)
 2. Gnani Indic STT & TTS (livekit.plugins.gnani)
 3. Dual-Loop Steering Router (agents.steering_router) for Mandi Pricing & Arbitrage
-4. WebRTC Bi-directional Audio Session Management
+4. WebRTC Bi-directional Audio Session Management with LiveKit Cloud
+5. LangSmith Observability Tracing
 """
 
 import os
@@ -25,11 +26,13 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(PARENT_DIR, ".env"))
 
 from livekit.agents import JobContext, WorkerOptions, cli
-from livekit.agents.voice import AgentSession
+from livekit.agents.voice import AgentSession, Agent, UserInputTranscribedEvent
 from livekit.plugins import silero
 import livekit.plugins.gnani as gnani
 
 from agents.steering_router import SteeringRouter
+from agents.tools import LIVEKIT_TOOLS
+from agents.observability import traceable
 
 logger = logging.getLogger("agriwatch-worker")
 logging.basicConfig(level=logging.INFO)
@@ -54,6 +57,7 @@ class AgriWatchVoiceAssistant:
             self.stt = None
             self.tts = None
 
+    @traceable(name="VoiceWorker:handle_user_utterance", run_type="chain")
     def handle_user_utterance(self, transcript: str) -> str:
         """Processes user voice transcription through outer-loop deliberative router."""
         logger.info(f"[*] Ingested user transcript: \"{transcript}\"")
@@ -70,13 +74,36 @@ async def entrypoint(ctx: JobContext):
 
     assistant_engine = AgriWatchVoiceAssistant(language="hi-IN")
 
+    session = AgentSession(
+        vad=assistant_engine.vad,
+        stt=assistant_engine.stt,
+        tts=assistant_engine.tts,
+        allow_interruptions=True
+    )
+
+    agent = Agent(
+        instructions=(
+            "आप एग्री-वॉच हैं - भारतीय किसानों और ग्रामीण व्यापारियों के लिए आधिकारिक "
+            "मंडी मूल्य और आर्बिट्रेज सलाहकार। सदैव सरल, सम्मानजनक और सटीक हिंदी में बोलें।"
+        ),
+        tools=LIVEKIT_TOOLS
+    )
+
+    @session.on("user_input_transcribed")
+    def on_user_input(event: UserInputTranscribedEvent):
+        if event.is_final and event.transcript.strip():
+            text = event.transcript.strip()
+            logger.info(f"[Farmer Voice Query]: {text}")
+            reply = assistant_engine.handle_user_utterance(text)
+            asyncio.create_task(session.say(reply))
+
+    # Start voice session inside the room
+    await session.start(agent, room=ctx.room)
+
     # Initial Indic greeting
     greeting = "नमस्ते किसान भाई! मैं एग्री-वॉच हूँ। आप किस फसल या मंडी का भाव जानना चाहते हैं?"
-    logger.info(f"Greeting: {greeting}")
-
-    # Set up session listeners and audio pipeline
-    # In live WebRTC session, VoiceAssistant automatically connects VAD, STT, and TTS
-    logger.info("Agri_watch Voice Assistant session is live and listening.")
+    logger.info(f"Sending Greeting: {greeting}")
+    await session.say(greeting)
 
 
 if __name__ == "__main__":
@@ -97,4 +124,3 @@ if __name__ == "__main__":
 
     # Standard LiveKit CLI entrypoint (supports: dev, start, download-files)
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
-

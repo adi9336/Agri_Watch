@@ -16,6 +16,10 @@ __pycache__/
 venv/
 .venv/
 
+# IDE
+.vscode/
+.idea/
+
 # Audio outputs
 *.wav
 *.mp3
