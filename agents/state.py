@@ -36,3 +36,4 @@ class AgentState(TypedDict, total=False):
 
     # Multi-turn persistent context
     session_context: Dict[str, Any]
+

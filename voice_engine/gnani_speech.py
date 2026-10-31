@@ -18,6 +18,10 @@ VACHANA_BASE_URL = "https://api.vachana.ai"
 ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
 
 
+from dotenv import load_dotenv
+load_dotenv(ENV_PATH)
+
+
 def get_gnani_api_key() -> Optional[str]:
     """Retrieve GNANI_API_KEY from environment or .env file."""
     key = os.getenv("GNANI_API_KEY")
@@ -38,15 +42,15 @@ class GnaniVoiceClient:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or get_gnani_api_key()
 
-    def get_livekit_stt(self, language: str = "hi-IN", sample_rate: int = 16000):
-        """Creates a LiveKit Gnani STT streaming instance."""
+    def get_livekit_stt(self, language: str = "hi-IN", sample_rate: int = 16000, use_streaming: bool = False):
+        """Creates a LiveKit Gnani STT instance."""
         import livekit.plugins.gnani as gnani
-        return gnani.STT(language=language, sample_rate=sample_rate)
+        return gnani.STT(language=language, sample_rate=sample_rate, api_key=self.api_key, use_streaming=use_streaming)
 
     def get_livekit_tts(self, model: str = "timbre-v2.5", voice: str = "Pranav", sample_rate: int = 16000):
         """Creates a LiveKit Gnani TTS streaming instance."""
         import livekit.plugins.gnani as gnani
-        return gnani.TTS(model=model, voice=voice, sample_rate=sample_rate)
+        return gnani.TTS(model=model, voice=voice, sample_rate=sample_rate, api_key=self.api_key)
 
     def synthesize_speech_rest(
         self,

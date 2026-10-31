@@ -114,3 +114,4 @@ if __name__ == "__main__":
         print(f"Crop   : {output.get('crop')} ({output.get('crop_hindi')})")
         print(f"Dist   : {output.get('district')} ({output.get('district_hindi')})")
         print(f"Spoken : {output.get('spoken_hindi_response')}")
+
