@@ -1,7 +1,7 @@
 """
 Agri_watch - Groq LLM Reasoning & Tool Calling Engine
-Uses Groq (Llama-3.3-70b-versatile) for ultra-low-latency (<250ms) Indic reasoning,
-autonomous tool selection, and natural spoken Hindi response generation.
+Uses Groq for ultra-low-latency (<250ms) Indic reasoning, autonomous tool selection,
+and natural spoken Hindi response generation with resilient model auto-discovery.
 """
 
 import os
@@ -68,6 +68,50 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
 7. अंतिम उत्तर हमेशा आवाज़ (TTS) के लिए अनुकूलित शुद्ध हिंदी में दें। भाव को '₹X प्रति क्विंटल' स्पष्ट कहें।
 """
 
+_active_groq_model: Optional[str] = None
+
+
+def resolve_groq_model(groq_key: str) -> str:
+    """Dynamically resolves the best available chat completion model on Groq."""
+    global _active_groq_model
+    if _active_groq_model:
+        return _active_groq_model
+
+    # Check manual override
+    env_model = os.getenv("GROQ_MODEL")
+    if env_model:
+        _active_groq_model = env_model
+        return _active_groq_model
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=groq_key)
+        available_ids = [m.id for m in client.models.list().data]
+
+        preferences = [
+            "qwen/qwen3.8-27b",
+            "openai/gpt-oss-120b",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "openai/gpt-oss-20b"
+        ]
+        for pref in preferences:
+            if pref in available_ids:
+                _active_groq_model = pref
+                logger.info(f"[*] Auto-selected Groq model: {_active_groq_model}")
+                return _active_groq_model
+
+        # Fallback to any non-whisper, non-guard model
+        chat_models = [m for m in available_ids if not m.startswith("whisper") and "guard" not in m]
+        if chat_models:
+            _active_groq_model = chat_models[0]
+            return _active_groq_model
+    except Exception as e:
+        logger.warning(f"[!] Groq model resolution warning: {e}")
+
+    _active_groq_model = "qwen/qwen3.8-27b"
+    return _active_groq_model
+
 
 def get_groq_llm() -> Optional[ChatGroq]:
     """Instantiates ChatGroq if GROQ_API_KEY is available."""
@@ -75,8 +119,9 @@ def get_groq_llm() -> Optional[ChatGroq]:
     if not groq_key:
         return None
     try:
+        model_name = resolve_groq_model(groq_key)
         return ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model=model_name,
             temperature=0.1,
             max_tokens=600,
             api_key=groq_key
@@ -89,12 +134,11 @@ def get_groq_llm() -> Optional[ChatGroq]:
 @traceable(name="LangGraphNode:GroqReasoner", run_type="llm")
 def groq_reasoner_node(state: AgentState) -> Dict[str, Any]:
     """
-    LLM Reasoning Node: Uses Groq (Llama-3.3-70b) to reason over farmer utterance,
+    LLM Reasoning Node: Uses Groq to reason over farmer utterance,
     decide whether to call tools, execute tools, and formulate natural spoken Hindi.
     """
     llm = get_groq_llm()
     if not llm:
-        # Fallback signal indicating Groq key is not configured
         return {"status": "llm_fallback"}
 
     query = state.get("user_query", "").strip()
@@ -110,47 +154,52 @@ def groq_reasoner_node(state: AgentState) -> Dict[str, Any]:
         HumanMessage(content=query)
     ]
 
-    llm_with_tools = llm.bind_tools(LANGCHAIN_TOOLS)
-    ai_msg: AIMessage = llm_with_tools.invoke(messages)
+    try:
+        llm_with_tools = llm.bind_tools(LANGCHAIN_TOOLS)
+        ai_msg: AIMessage = llm_with_tools.invoke(messages)
 
-    # If the LLM decided to invoke tools:
-    if ai_msg.tool_calls:
-        logger.info(f"[*] Groq LLM autonomous tool calls: {ai_msg.tool_calls}")
-        messages.append(ai_msg)
+        # If the LLM decided to invoke tools:
+        if ai_msg.tool_calls:
+            logger.info(f"[*] Groq LLM autonomous tool calls: {ai_msg.tool_calls}")
+            messages.append(ai_msg)
 
-        for tc in ai_msg.tool_calls:
-            t_name = tc.get("name")
-            t_args = tc.get("args", {})
-            selected_tool = TOOL_MAP.get(t_name)
-            if selected_tool:
-                try:
-                    tool_output = selected_tool.invoke(t_args)
-                except Exception as ex:
-                    tool_output = f"Tool execution notice: {ex}"
-                messages.append(ToolMessage(content=str(tool_output), tool_call_id=tc["id"]))
+            for tc in ai_msg.tool_calls:
+                t_name = tc.get("name")
+                t_args = tc.get("args", {})
+                selected_tool = TOOL_MAP.get(t_name)
+                if selected_tool:
+                    try:
+                        tool_output = selected_tool.invoke(t_args)
+                    except Exception as ex:
+                        tool_output = f"Tool execution notice: {ex}"
+                    messages.append(ToolMessage(content=str(tool_output), tool_call_id=tc["id"]))
 
-        # Second LLM turn: Synthesize final Hindi voice response using tool data
-        final_ai_msg: AIMessage = llm.invoke(messages)
-        spoken_response = final_ai_msg.content.strip()
+            # Second LLM turn: Synthesize final Hindi voice response using tool data
+            final_ai_msg: AIMessage = llm.invoke(messages)
+            spoken_response = final_ai_msg.content.strip()
 
-        # Update persistent context if extracted
-        updated_ctx = dict(session_ctx)
-        for tc in ai_msg.tool_calls:
-            args = tc.get("args", {})
-            if "crop" in args:
-                updated_ctx["crop"] = args["crop"]
-            if "district" in args:
-                updated_ctx["district"] = args["district"]
+            # Update persistent context if extracted
+            updated_ctx = dict(session_ctx)
+            for tc in ai_msg.tool_calls:
+                args = tc.get("args", {})
+                if "crop" in args:
+                    updated_ctx["crop"] = args["crop"]
+                if "district" in args:
+                    updated_ctx["district"] = args["district"]
 
+            return {
+                "spoken_hindi_response": spoken_response,
+                "status": "success",
+                "session_context": updated_ctx
+            }
+
+        # Direct conversational response (e.g. greeting or clarification prompt)
+        spoken_response = ai_msg.content.strip()
         return {
             "spoken_hindi_response": spoken_response,
-            "status": "success",
-            "session_context": updated_ctx
+            "status": "success"
         }
 
-    # Direct conversational response (e.g. greeting or clarification prompt)
-    spoken_response = ai_msg.content.strip()
-    return {
-        "spoken_hindi_response": spoken_response,
-        "status": "success"
-    }
+    except Exception as e:
+        logger.warning(f"[!] Groq execution encountered error, falling back to sovereign pipeline: {e}")
+        return {"status": "llm_fallback"}
