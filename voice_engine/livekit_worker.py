@@ -97,3 +97,4 @@ if __name__ == "__main__":
 
     # Standard LiveKit CLI entrypoint (supports: dev, start, download-files)
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+
