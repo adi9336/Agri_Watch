@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 2,
+  "project": "Agri_watch",
+  "revision": null,
+  "sourceHash": "8c5ffc7d1abbfdcbf1142f4edbb78a5460b075e7bcb030f8019586c017e4fe45",
+  "provenance": {
+    "tool": "genesis-graphizer",
+    "method": "static-analysis",
+    "confidenceScale": "0..1"
+  },
+  "nodes": [
+    {
+      "id": "file:agents/__init__.py",
+      "type": "file",
+      "label": "agents/__init__.py",
+      "path": "agents/__init__.py",
+      "language": "python",
+      "confidence": 1,
+      "extractor": "filesystem",
+      "contentHash": "9dec4b67baaee9c1263d38be81b67a247779bdd631276606f637bf1ae19ad1a0"
+    },
+    {
+      "id": "file:agents/steering_router.py",
+      "type": "file",
+      "label": "agents/steering_router.py",
+      "path": "agents/steering_router.py",
+      "language": "python",
+      "confidence": 1,
+      "extractor": "filesystem",
+      "contentHash": "8ced466907c14d990c6e8207a6251b36ff258963439af2c53eadd64721392103"
+    },
+    {
+      "id": "file:mandi_tracker.py",
+      "type": "file",
+      "label": "mandi_tracker.py",
+      "path": "mandi_tracker.py",
+      "language": "python",
+      "confidence": 1,
+      "extractor": "filesystem",
+      "contentHash": "632902e6f00b0a0144e45c4ed6f92f83a1a85eb6de4a123d258c3a76e6589d57"
+    },
+    {
+      "id": "file:test_api.py",
+      "type": "file",
+      "label": "test_api.py",
+      "path": "test_api.py",
+      "language": "python",
+      "confidence": 1,
+      "extractor": "filesystem",
+      "contentHash": "3580cb5b01cb60b4868201fb54025abfc72ffe7ab5926736fdde0b737a4f5929"
+    },
+    {
+      "id": "file:voice_engine/__init__.py",
+      "type": "file",
+      "label": "voice_engine/__init__.py",
+      "path": "voice_engine/__init__.py",
+      "language": "python",
+      "confidence": 1,
+      "extractor": "filesystem",
+      "contentHash": "8ee68cf5bf7e05a26abecfb9c718c7a3b7ff33eb5d8262fba4c177f41127436a"
+    },
+    {
+      "id": "file:voice_engine/gnani_speech.py",
+      "type": "file",
+      "label": "voice_engine/gnani_speech.py",
+      "path": "voice_engine/gnani_speech.py",
+      "language": "python",
+      "confidence": 1,
+      "extractor": "filesystem",
+      "contentHash": "d6cf27b72e9934c6a5ce1c963c979f18157d4b259132540499e9fe9b303687d5"
+    },
+    {
+      "id": "file:voice_engine/livekit_worker.py",
+      "type": "file",
+      "label": "voice_engine/livekit_worker.py",
+      "path": "voice_engine/livekit_worker.py",
+      "language": "python",
+      "confidence": 1,
+      "extractor": "filesystem",
+      "contentHash": "24700aef61993c66ae27ed17c195a7157b402ef4ac93cbf8d06b0ac5e94d9d8c"
+    }
+  ],
+  "edges": [],
+  "warnings": [
+    "Python AST unavailable: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases."
+  ],
+  "stats": {
+    "unresolvedCalls": 0
+  }
+}

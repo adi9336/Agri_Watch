@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "project": "Agri_watch",
+  "invariants": [
+    {
+      "id": "INV-01",
+      "name": "External Call Timeout",
+      "rule": "Every outbound network call to data.gov.in or api.vachana.ai must enforce a strict timeout (< 3.0s) and degrade to local cached baselines without breaking the audio stream."
+    },
+    {
+      "id": "INV-02",
+      "name": "Price Precision & Provenance",
+      "rule": "Any price recited over voice must explicitly state the crop variety, the unit (Rs./Quintal), and the arrival date."
+    },
+    {
+      "id": "INV-03",
+      "name": "Barge-in Latency",
+      "rule": "Speech activity detected by VAD while the assistant is speaking must abort active TTS packet streaming in under 100ms."
+    }
+  ]
+}
+

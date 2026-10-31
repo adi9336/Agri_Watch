@@ -1,0 +1,132 @@
+{
+  "schema_version": 2,
+  "project": {
+    "name": "Agri_watch",
+    "mode": "init",
+    "profile": "prototype",
+    "objective": "Define the project objective.",
+    "constraints": [],
+    "non_goals": [],
+    "trust_boundary": "local repository",
+    "created_at": "2026-10-31T16:38:35.644Z",
+    "updated_at": "2026-10-31T18:06:12.385Z"
+  },
+  "policy": {
+    "ponytail": "full",
+    "autonomy": "human-in-the-loop",
+    "learned_rule_promotion": "human-required",
+    "cleanup": "propose-only",
+    "traces": {
+      "storage": "local",
+      "commit_raw": false,
+      "redact_secrets": true
+    }
+  },
+  "lifecycle": {
+    "phase": "build",
+    "status": "active",
+    "active_task": "M1",
+    "blocker": null,
+    "next_action": "Run the task pre-flight."
+  },
+  "commands": {},
+  "workflow": null,
+  "artifacts": [],
+  "assumptions": [],
+  "invariants": [],
+  "decisions": [],
+  "knowledge": [],
+  "tasks": [
+    {
+      "id": "M1",
+      "outcome": "Install",
+      "state": "active",
+      "risk": "low",
+      "owner": null,
+      "scope": [],
+      "dependencies": [],
+      "requirements": [],
+      "inputs": [],
+      "environment": [],
+      "scenarios": [],
+      "gates": [],
+      "next_action": "Run the task pre-flight.",
+      "blocker": null,
+      "notes": [],
+      "failures": [],
+      "limitations": [],
+      "created_at": "2026-10-31T16:56:17.593Z",
+      "updated_at": "2026-10-31T16:56:21.843Z",
+      "base_manifest": {
+        ".env": "209a8088fc1a976855b56bb1216a590c262c66b968a5912bb3dd9ec4612d13bf",
+        ".gitignore": "f1bf1a2e26bbf1d783287e7e6e732ecea5fb2fa2e9bf7fbb7e9df613e57c2363",
+        "data/mandi_prices_snapshot.csv": "08a5efde43f38b8d6d1e97604748f213804ae5b2652153739c9c7ae31360a01c",
+        "mandi_tracker.py": "a35e8ab6dd8b1bae5268482e14e7c953878c9b8a8cac7ba45887e582752fd599",
+        "test_api.py": "41418737c99617788fc45b1548cc612a037450031be345acf8f242d592aed748",
+        "voice_engine/__init__.py": "0157dd572aa0e5c40e29493e2cce0e064697651e6f49fcccecc594b722e4ea1c",
+        "voice_engine/gnani_speech.py": "a1183f2cc8d60ee3465db77134cf4893347e6dd5cdaa2e12c566f4f857106af2"
+      }
+    },
+    {
+      "id": "M2",
+      "outcome": "Build",
+      "state": "queued",
+      "risk": "low",
+      "owner": null,
+      "scope": [],
+      "dependencies": [],
+      "requirements": [],
+      "inputs": [],
+      "environment": [],
+      "scenarios": [],
+      "gates": [],
+      "next_action": "Run the task pre-flight.",
+      "blocker": null,
+      "notes": [],
+      "failures": [],
+      "limitations": [],
+      "created_at": "2026-10-31T18:01:14.903Z",
+      "updated_at": "2026-10-31T18:01:14.903Z"
+    },
+    {
+      "id": "M3",
+      "outcome": "Deploy",
+      "state": "queued",
+      "risk": "low",
+      "owner": null,
+      "scope": [],
+      "dependencies": [],
+      "requirements": [],
+      "inputs": [],
+      "environment": [],
+      "scenarios": [],
+      "gates": [],
+      "next_action": "Run the task pre-flight.",
+      "blocker": null,
+      "notes": [],
+      "failures": [],
+      "limitations": [],
+      "created_at": "2026-10-31T18:06:12.384Z",
+      "updated_at": "2026-10-31T18:06:12.385Z"
+    }
+  ],
+  "learning_proposals": [],
+  "cleanup_proposals": [],
+  "controls": [],
+  "attempts": [],
+  "authorizations": [],
+  "experiments": [],
+  "incidents": [],
+  "discovery": null,
+  "checkpoint": {
+    "at": "2026-10-31T16:56:34.410Z",
+    "revision": {
+      "commit": null,
+      "dirty": null,
+      "source_hash": "5b6afda13d91583a375c20ba64bdf1d070d093e5b62572ff42e6123b34871b1c"
+    },
+    "active_task": "M1",
+    "next_action": "Run the task pre-flight."
+  },
+  "legacy": null
+}

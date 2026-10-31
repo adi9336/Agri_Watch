@@ -1,0 +1,12 @@
+digraph genesis {
+  rankdir=LR;
+  node [shape=box,fontname="system-ui"];
+  "file:agents/__init__.py" [label="agents/__init__.py",class="file"];
+  "file:agents/steering_router.py" [label="agents/steering_router.py",class="file"];
+  "file:mandi_tracker.py" [label="mandi_tracker.py",class="file"];
+  "file:test_api.py" [label="test_api.py",class="file"];
+  "file:voice_engine/__init__.py" [label="voice_engine/__init__.py",class="file"];
+  "file:voice_engine/gnani_speech.py" [label="voice_engine/gnani_speech.py",class="file"];
+  "file:voice_engine/livekit_worker.py" [label="voice_engine/livekit_worker.py",class="file"];
+
+}

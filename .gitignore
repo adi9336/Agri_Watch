@@ -1,0 +1,22 @@
+# Secrets
+.env
+*.env
+*.pem
+*.key
+
+# Data & caches (keep small benchmark configs, ignore large dumps)
+data/*.csv
+data/*.duckdb
+data/*.sqlite
+*.log
+__pycache__/
+*.pyc
+
+# Virtualenvs
+venv/
+.venv/
+
+# Audio outputs
+*.wav
+*.mp3
+*.pcm

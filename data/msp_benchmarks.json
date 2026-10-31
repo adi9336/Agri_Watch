@@ -1,0 +1,17 @@
+{
+  "2026_27": {
+    "Paddy(Common)": { "msp": 2300, "season": "Kharif", "name_hi": "धान (सामान्य)" },
+    "Paddy(Basmati)": { "msp": 2320, "season": "Kharif", "name_hi": "धान (बासमती)" },
+    "Wheat": { "msp": 2275, "season": "Rabi", "name_hi": "गेहूँ" },
+    "Barley(Jau)": { "msp": 1850, "season": "Rabi", "name_hi": "जौ" },
+    "Gram Raw(Chholia)": { "msp": 5440, "season": "Rabi", "name_hi": "चना" },
+    "Gram(Whole)": { "msp": 5440, "season": "Rabi", "name_hi": "चना" },
+    "Masur Dal": { "msp": 6425, "season": "Rabi", "name_hi": "मसूर" },
+    "Mustard": { "msp": 5650, "season": "Rabi", "name_hi": "सरसों" },
+    "Maize": { "msp": 2090, "season": "Kharif", "name_hi": "मक्का" },
+    "Groundnut": { "msp": 6783, "season": "Kharif", "name_hi": "मूंगफली" },
+    "Soyabean": { "msp": 4892, "season": "Kharif", "name_hi": "सोयाबीन" },
+    "Green Gram(Moong)(Whole)": { "msp": 8558, "season": "Kharif", "name_hi": "मूँग" }
+  }
+}
+

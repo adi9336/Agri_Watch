@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Definition of Done — Agri_watch Voice Engine</title>
+</head>
+<body>
+  <!-- SECTION 1: COGNITIVE JOB & DIAGNOSTIC ASSESSMENT -->
+  <section id="cognitive-job">
+    <h2>1. Cognitive Job & Diagnostic Context</h2>
+    <ul>
+      <li><strong>Scope:</strong> Extend (Building upon our verified <code>mandi_tracker.py</code> Agmarknet price engine).</li>
+      <li><strong>AI Components:</strong> 
+        LiveKit (WebRTC, Silero VAD), 
+        Official <code>livekit-plugins-gnani</code> (<a href="https://docs.gnani.ai/integrations/livekit">Gnani LiveKit Plugin</a>: Prisma STT v3.0, Timbre TTS v2.5/v3.0 via <code>GNANI_API_KEY</code>), 
+        Gnani Evon 3.3 Indic LLM, and 
+        LangChain/LangGraph Dual-Loop Conversational Steering Engine.
+      </li>
+      <li><strong>Distributed Topology:</strong> Client WebRTC audio &harr; LiveKit SFU &harr; Agent Worker &harr; Gnani Speech Cloud (<code>https://api.vachana.ai</code>) &harr; Agmarknet <code>data.gov.in</code> Government Feed.</li>
+      <li><strong>Trust Boundary:</strong> Untrusted audio ingestion from farmer devices; strict redaction of <code>.env</code> credentials (<code>DATA_GOV_IN_KEY</code>, <code>GNANI_API_KEY</code>, <code>LIVEKIT_KEYS</code>) at the server worker boundary.</li>
+      <li><strong>Cognitive Job Statement:</strong> Deliver a voice-first Indic conversation agent that informs Indian farmers and rural traders of real-time mandi prices, nearby market price arbitrage, and MSP protection using natural spoken audio in under 1.2 seconds.</li>
+    </ul>
+  </section>
+
+  <!-- SECTION 2: DEFINITION OF DONE (COPIED FROM GATES) -->
+  <section id="definition-of-done">
+    <h2>2. Definition of Done</h2>
+    <ol>
+      <li><strong>Gate M1 (Gnani LiveKit Plugin Integration):</strong> <code>python -c "import livekit.plugins.gnani; print('Gnani plugin ready')"</code> verifies that the official <code>livekit-plugins-gnani</code> STT and TTS drivers are installed and authenticated.</li>
+      <li><strong>Gate M2 (Dual-Loop Steering Engine):</strong> <code>python -m agents.steering_router --query "झाँसी में गेहूँ का क्या भाव है?"</code> extracts entities, pulls Agmarknet data, detects MSP comparison, and synthesizes spoken Hindi response in &lt; 800ms.</li>
+      <li><strong>Gate M3 (LiveKit Voice Worker):</strong> <code>python -m voice_engine.livekit_worker dev</code> establishes a WebRTC audio loop, ingests microphone input, applies Silero VAD, and executes barge-in cancellation in &lt; 100ms.</li>
+    </ol>
+  </section>
+</body>
+</html>
+
