@@ -2,10 +2,12 @@
 Agri_watch - Dual-Loop Conversational Steering & Price Arbitrage Router
 Coordinates:
 1. Entity Disambiguation (Indic synonyms, fuzzy crop and district extraction)
-2. Live/Historical Mandi Price Ingestion (Agmarknet data engine)
-3. Multi-Mandi Arbitrage & Transport Profit Calculation
-4. Govt MSP Benchmark Protection
-5. Spoken Hindi Response Synthesis for Gnani TTS
+2. Conversational Intent Classification (Greeting, Identity, MSP, Arbitrage, Price)
+3. Multi-Turn Session Memory (Tracking crop & district across conversational turns)
+4. Live/Historical Mandi Price Ingestion (Agmarknet data engine)
+5. Multi-Mandi Arbitrage & Transport Profit Calculation
+6. Govt MSP Benchmark Protection
+7. Dynamic Spoken Hindi Response Synthesis for Gnani TTS
 """
 
 import os
@@ -37,15 +39,18 @@ CROP_SYNONYMS = {
     "chawal": "Paddy", "paddy": "Paddy", "rice": "Paddy",
     # Mustard
     "सरसों": "Mustard", "राई": "Mustard", "sarson": "Mustard", "mustard": "Mustard", "rai": "Mustard",
+    "लाहा": "Mustard", "laha": "Mustard",
     # Gram / Pulses
     "चना": "Gram Raw(Chholia)", "छोलिया": "Gram Raw(Chholia)", "chana": "Gram Raw(Chholia)", "gram": "Gram Raw(Chholia)",
     "मूँग": "Green Gram(Moong)(Whole)", "मूंग": "Green Gram(Moong)(Whole)", "moong": "Green Gram(Moong)(Whole)",
     "मसूर": "Masur Dal", "masur": "Masur Dal",
     "मटर": "Peas(Dry)", "matar": "Peas(Dry)", "peas": "Peas(Dry)",
+    "अरहर": "Arhar (Tur/Red Gram)(Whole)", "तुअर": "Arhar (Tur/Red Gram)(Whole)", "arhar": "Arhar (Tur/Red Gram)(Whole)",
     # Coarse cereals & Oilseeds
     "जौ": "Barley(Jau)", "jau": "Barley(Jau)", "barley": "Barley(Jau)",
     "मक्का": "Maize", "makka": "Maize", "bhutta": "Maize", "maize": "Maize",
     "मूंगफली": "Groundnut", "mungfali": "Groundnut", "groundnut": "Groundnut",
+    "सोयाबीन": "Soyabean", "soyabean": "Soyabean",
     # Vegetables
     "प्याज": "Onion", "पियाज": "Onion", "कांदा": "Onion", "pyaz": "Onion", "onion": "Onion",
     "टमाटर": "Tomato", "tamatar": "Tomato", "tomato": "Tomato",
@@ -70,6 +75,12 @@ KNOWN_DISTRICTS = {
     "इटावा": ("Etawah", "Uttar Pradesh"),
     "lalitpur": ("Lalitpur", "Uttar Pradesh"),
     "ललितपुर": ("Lalitpur", "Uttar Pradesh"),
+    "agra": ("Agra", "Uttar Pradesh"),
+    "आगरा": ("Agra", "Uttar Pradesh"),
+    "mathura": ("Mathura", "Uttar Pradesh"),
+    "मथुरा": ("Mathura", "Uttar Pradesh"),
+    "aligarh": ("Aligarh", "Uttar Pradesh"),
+    "अलीगढ़": ("Aligarh", "Uttar Pradesh"),
     "rajkot": ("Rajkot", "Gujarat"),
     "राजकोट": ("Rajkot", "Gujarat"),
     "karnal": ("Karnal", "Haryana"),
@@ -83,6 +94,12 @@ class SteeringRouter:
     def __init__(self, api_key: Optional[str] = None):
         self.service = MandiPriceService(api_key=api_key)
         self.msp_data = self._load_msp_data()
+        # Conversational Session State Memory
+        self.context = {
+            "crop": None,
+            "district": None,
+            "state": "Uttar Pradesh"
+        }
 
     def _load_msp_data(self) -> Dict[str, Any]:
         if os.path.exists(MSP_FILE):
@@ -90,6 +107,34 @@ class SteeringRouter:
                 data = json.load(f)
                 return data.get("2026_27", {})
         return {}
+
+    def detect_intent(self, query: str) -> str:
+        """Classifies conversational intent from farmer query."""
+        q = query.lower()
+        
+        # 1. Greetings
+        if any(w in q for w in ["नमस्ते", "नमस्कार", "राम राम", "प्रणाम", "हेलो", "hello", "hi", "hey"]):
+            if not any(crop in q for crop in CROP_SYNONYMS) and not any(dist in q for dist in KNOWN_DISTRICTS):
+                return "GREETING"
+
+        # 2. Identity / Help / Capabilities
+        if any(w in q for w in ["तुम कौन", "आप कौन", "क्या काम", "क्या करते", "क्या मदद", "help", "who are you"]):
+            return "IDENTITY_HELP"
+
+        # 3. Gratitude / Closure
+        if any(w in q for w in ["धन्यवाद", "शुक्रिया", "thanks", "thank you", "ठीक है धन्यवाद", "बहुत अच्छा"]):
+            return "GRATITUDE"
+
+        # 4. Specific MSP inquiry
+        if any(w in q for w in ["समर्थन मूल्य", "एमएसपी", "msp", "सरकारी भाव", "सरकारी रेट", "सरकारी गारंटी"]):
+            return "MSP_INQUIRY"
+
+        # 5. Specific Arbitrage inquiry
+        if any(w in q for w in ["कहाँ बेचूं", "कहाँ बेचना", "ज्यादा मुनाफा", "मुनाफा कहाँ", "ज्यादा भाव कहाँ", "arbitrage"]):
+            return "ARBITRAGE_INQUIRY"
+
+        # Default: Market Price Discovery
+        return "PRICE_INQUIRY"
 
     @traceable(name="NLU:parse_entities", run_type="parser")
     def parse_entities(self, query: str) -> Dict[str, Optional[str]]:
@@ -125,6 +170,7 @@ class SteeringRouter:
                 return val.get("msp")
         return None
 
+    @traceable(name="ArbitrageEngine:calculate", run_type="tool")
     def calculate_arbitrage(self, records: List[Dict]) -> Dict[str, Any]:
         """
         Analyzes records across mandis in a district to identify
@@ -168,6 +214,7 @@ class SteeringRouter:
             "total_mandis_reporting": len(set(r.get("market") for r in valid_records))
         }
 
+    @traceable(name="SteeringRouter:process_request", run_type="chain")
     def process_request(
         self,
         query: Optional[str] = None,
@@ -176,20 +223,84 @@ class SteeringRouter:
         crop: Optional[str] = None,
         date: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Processes request and synthesizes spoken response."""
-        # Step 1: Parse entities if query provided
+        """Processes request with intent detection, session memory, and natural synthesis."""
+        intent = self.detect_intent(query) if query else "PRICE_INQUIRY"
+
+        # -------------------------------------------------------------
+        # Intent 1: Greeting
+        # -------------------------------------------------------------
+        if intent == "GREETING":
+            resp = "राम राम किसान भाई! मैं एग्री-वॉच हूँ। आप किस फसल या किस मंडी का आज का भाव जानना चाहते हैं?"
+            return {"intent": intent, "spoken_hindi_response": resp, "crop": None, "district": None, "state": self.context["state"], "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
+
+        # -------------------------------------------------------------
+        # Intent 2: Identity & Help
+        # -------------------------------------------------------------
+        if intent == "IDENTITY_HELP":
+            resp = (
+                "मैं एग्री-वॉच हूँ - भारतीय किसानों के लिए स्वतंत्र मंडी और मूल्य सलाहकार। "
+                "मैं आपको सरकारी एगमार्कनेट के ताज़ा थोक भाव, मंडियों के बीच मुनाफे का अंतर और "
+                "न्यूनतम समर्थन मूल्य (MSP) की सही जानकारी देता हूँ। आप किसी भी फसल का नाम बताएं।"
+            )
+            return {"intent": intent, "spoken_hindi_response": resp, "crop": None, "district": None, "state": self.context["state"], "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
+
+        # -------------------------------------------------------------
+        # Intent 3: Gratitude / Closure
+        # -------------------------------------------------------------
+        if intent == "GRATITUDE":
+            resp = "बहुत-बहुत धन्यवाद किसान भाई! किसी भी फसल या मंडी का भाव जानने के लिए कभी भी पूछें। आपका दिन शुभ हो!"
+            return {"intent": intent, "spoken_hindi_response": resp, "crop": self.context["crop"], "district": self.context["district"], "state": self.context["state"], "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
+
+        # -------------------------------------------------------------
+        # Entity Extraction & Context Memory Updating
+        # -------------------------------------------------------------
         if query:
             extracted = self.parse_entities(query)
-            state = state or extracted["state"]
-            district = district or extracted["district"]
-            crop = crop or extracted["crop"]
+            if extracted["crop"]:
+                self.context["crop"] = extracted["crop"]
+            if extracted["district"]:
+                self.context["district"] = extracted["district"]
+            if extracted["state"]:
+                self.context["state"] = extracted["state"]
 
-        # Default fallbacks if omitted
-        state = state or "Uttar Pradesh"
-        district = district or "Jhansi"
-        crop = crop or "Wheat"
+        # Apply parameters or memory
+        crop = crop or self.context["crop"]
+        district = district or self.context["district"]
+        state = state or self.context["state"] or "Uttar Pradesh"
 
-        # Step 2: Fetch pricing data
+        # -------------------------------------------------------------
+        # Intent 4: Explicit MSP Inquiry
+        # -------------------------------------------------------------
+        if intent == "MSP_INQUIRY":
+            if not crop:
+                resp = "किसान भाई, आप किस फसल का सरकारी समर्थन मूल्य (MSP) जानना चाहते हैं? जैसे गेहूँ, चना, धान या सरसों?"
+                return {"intent": intent, "spoken_hindi_response": resp, "crop": None, "district": district, "state": state, "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
+            msp_val = self.get_msp(crop)
+            if msp_val:
+                resp = f"किसान भाई, 2026-27 के लिए {crop} का सरकारी समर्थन मूल्य (MSP) ₹{msp_val} प्रति क्विंटल निर्धारित है। यदि कोई व्यापारी इससे कम बोली लगाता है, तो आप सरकारी खरीद केंद्र पर संपर्क कर सकते हैं।"
+            else:
+                resp = f"{crop} के लिए कोई प्रत्यक्ष MSP दर अधिसूचित नहीं है, इसका व्यापार मंडी में खुली नीलामी के आधार पर होता है।"
+            return {"intent": intent, "spoken_hindi_response": resp, "crop": crop, "district": district, "state": state, "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": msp_val}
+
+        # -------------------------------------------------------------
+        # Disambiguation / Clarification when context is incomplete
+        # -------------------------------------------------------------
+        if not crop and district:
+            resp = f"किसान भाई, {district} मंडी में आप किस फसल का भाव जानना चाहते हैं? जैसे गेहूँ, सरसों, चना या मटर?"
+            return {"intent": "CLARIFICATION_CROP", "spoken_hindi_response": resp, "crop": None, "district": district, "state": state, "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
+
+        if not crop and not district:
+            resp = "किसान भाई, आप किस फसल या किस जिले की मंडी का भाव जानना चाहते हैं? मुझे बताएं।"
+            return {"intent": "CLARIFICATION_BOTH", "spoken_hindi_response": resp, "crop": None, "district": None, "state": state, "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
+
+        # If crop is present but district is still unknown, default to regional baseline
+        if crop and not district:
+            district = "Jhansi"
+            self.context["district"] = district
+
+        # -------------------------------------------------------------
+        # Step 2: Fetch Live or Baseline Mandi Pricing Data
+        # -------------------------------------------------------------
         is_live = False
         reporting_date = None
         records = []
@@ -208,7 +319,7 @@ class SteeringRouter:
                 except Exception as e:
                     print(f"[*] Live API note: {e}")
 
-        # Fallback to historical baseline if live returned 0 or old date requested
+        # Fallback to historical database
         if not records:
             norm_date = normalize_date(date) if date and date.lower() != "today" else None
             hist_records, _ = self.service.fetch_historical(state, district, crop, target_date=norm_date)
@@ -220,7 +331,28 @@ class SteeringRouter:
         arbitrage = self.calculate_arbitrage(records)
         msp = self.get_msp(crop)
 
-        # Step 4: Synthesize Spoken Indic Output for Gnani TTS
+        # -------------------------------------------------------------
+        # Intent 5: Arbitrage Inquiry (Where to sell for top profit)
+        # -------------------------------------------------------------
+        if intent == "ARBITRAGE_INQUIRY":
+            if arbitrage and arbitrage.get("recommend_arbitrage"):
+                top_m = arbitrage.get("top_market")
+                top_p = arbitrage.get("top_modal")
+                low_m = arbitrage.get("lowest_market")
+                spread = arbitrage.get("spread")
+                net_gain = arbitrage.get("estimated_net_gain_25q")
+                resp = (
+                    f"किसान भाई, {crop} के लिए सबसे बढ़िया भाव {top_m} में ₹{top_p:.0f} प्रति क्विंटल है। "
+                    f"पास की {low_m} की तुलना में यहाँ ₹{spread:.0f} प्रति क्विंटल अधिक मिल रहा है। "
+                    f"ट्रॉली (25 क्विंटल) ले जाने पर डीजल खर्च काटकर लगभग ₹{net_gain:.0f} का शुद्ध मुनाफा होगा।"
+                )
+            else:
+                resp = f"किसान भाई, {district} क्षेत्र की सभी मंडियों में {crop} का भाव लगभग बराबर चल रहा है। आप निकटतम मंडी में ही बिक्री कर सकते हैं।"
+            return {"intent": intent, "spoken_hindi_response": resp, "crop": crop, "district": district, "state": state, "reporting_date": reporting_date, "is_live": is_live, "records_count": len(records), "records": records[:5], "arbitrage": arbitrage, "msp": msp}
+
+        # -------------------------------------------------------------
+        # Intent 6: General Mandi Price Discovery
+        # -------------------------------------------------------------
         spoken_response = self._synthesize_spoken_hindi(
             crop=crop,
             district=district,
@@ -233,6 +365,7 @@ class SteeringRouter:
         )
 
         return {
+            "intent": intent,
             "crop": crop,
             "district": district,
             "state": state,
@@ -318,6 +451,7 @@ if __name__ == "__main__":
 
     print("\n" + "=" * 65)
     print(f"QUERY ANALYSIS:")
+    print(f"  Intent: {res.get('intent')}")
     print(f"  Target: {res['crop']} in {res['district']} ({res['state']})")
     print(f"  Reporting Date: {res['reporting_date']} (Live: {res['is_live']})")
     print(f"  Records Analyzed: {res['records_count']}")
@@ -331,4 +465,3 @@ if __name__ == "__main__":
     print("=" * 65)
     print("\nSPONSORED / SYNTHESIZED SPOKEN INDIC RESPONSE (FOR GNANI TTS):")
     print(f"  \"{res['spoken_hindi_response']}\"\n")
-
