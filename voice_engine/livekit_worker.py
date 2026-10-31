@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(PARENT_DIR, ".env"))
 
 from livekit.agents import JobContext, WorkerOptions, cli, AgentServer
-from livekit.agents.voice import AgentSession, Agent, UserInputTranscribedEvent
+from livekit.agents.voice import AgentSession, Agent, UserInputTranscribedEvent, ConversationItemAddedEvent
 from livekit.plugins import silero
 import livekit.plugins.gnani as gnani
 
@@ -100,6 +100,16 @@ async def entrypoint(ctx: JobContext):
             logger.info(f"[Farmer Voice Query]: {text}")
             reply = assistant_engine.handle_user_utterance(text)
             asyncio.create_task(session.say(reply))
+
+    @session.on("conversation_item_added")
+    def on_conversation_item(event: ConversationItemAddedEvent):
+        # Triggered when typing text in console mode or when text chat messages arrive
+        if event.item.role == "user" and event.item.raw_text_content:
+            text = event.item.raw_text_content.strip()
+            if text:
+                logger.info(f"[Farmer Text Query]: {text}")
+                reply = assistant_engine.handle_user_utterance(text)
+                asyncio.create_task(session.say(reply))
 
     # Start voice session inside the room
     await session.start(agent, room=ctx.room)
