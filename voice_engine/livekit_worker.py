@@ -50,10 +50,10 @@ class AgriWatchVoiceAssistant:
         # Load Silero VAD (Inner Reactive Loop)
         self.vad = silero.VAD.load()
 
-        # Load Gnani Speech Plugins
+        # Load Gnani Speech Plugins (use_streaming=False uses local Silero VAD to eliminate 60s idle socket drops)
         gnani_key = os.getenv("GNANI_API_KEY")
         if gnani_key:
-            self.stt = gnani.STT(language=self.language, sample_rate=16000)
+            self.stt = gnani.STT(language=self.language, sample_rate=16000, use_streaming=False)
             self.tts = gnani.TTS(model="timbre-v2.5", voice="Pranav", sample_rate=16000)
         else:
             logger.warning("[!] GNANI_API_KEY not found in .env; running in simulated audio mode.")
