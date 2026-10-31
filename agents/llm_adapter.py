@@ -62,3 +62,4 @@ class AgriWatchLLM(llm.LLM):
         tools = kwargs.get("tools") or []
         conn_opts = kwargs.get("conn_options") or DEFAULT_API_CONNECT_OPTIONS
         return AgriWatchLLMStream(self, chat_ctx=chat_ctx, tools=tools, conn_options=conn_opts)
+

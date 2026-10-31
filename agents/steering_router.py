@@ -89,6 +89,35 @@ KNOWN_DISTRICTS = {
     "लुधियाना": ("Ludhiana", "Punjab")
 }
 
+# Indic Crop Spoken Names in Hindi
+CROP_HINDI_NAMES = {
+    "Wheat": "गेहूँ",
+    "Paddy": "धान",
+    "Paddy(Basmati)": "बासमती धान",
+    "Mustard": "सरसों",
+    "Gram Raw(Chholia)": "चना",
+    "Green Gram(Moong)(Whole)": "मूँग",
+    "Masur Dal": "मसूर",
+    "Peas(Dry)": "मटर",
+    "Arhar (Tur/Red Gram)(Whole)": "अरहर",
+    "Barley(Jau)": "जौ",
+    "Maize": "मक्का",
+    "Groundnut": "मूंगफली",
+    "Soyabean": "सोयाबीन",
+    "Onion": "प्याज",
+    "Tomato": "टमाटर",
+    "Potato": "आलू"
+}
+
+def clean_market_name(market: str) -> str:
+    """Cleans APMC codes and English artifacts for natural Hindi speech."""
+    if not market:
+        return "मंडी"
+    clean = re.sub(r"\bAPMC\b", "", market, flags=re.IGNORECASE)
+    clean = re.sub(r"\(.*?\)", "", clean)
+    clean = clean.strip()
+    return f"{clean} मंडी" if not clean.endswith("मंडी") else clean
+
 
 class SteeringRouter:
     def __init__(self, api_key: Optional[str] = None):
@@ -124,6 +153,12 @@ class SteeringRouter:
         # 3. Gratitude / Closure
         if any(w in q for w in ["धन्यवाद", "शुक्रिया", "thanks", "thank you", "ठीक है धन्यवाद", "बहुत अच्छा"]):
             return "GRATITUDE"
+
+        # 4. Continuation / Affirmations without new entity (avoid re-quoting the same price)
+        if any(w in q for w in ["हाँ", "अच्छा", "ok", "okay", "बताओ", "और बताओ", "rate", "भाव", "aur batao", "theek hai"]):
+            if not any(crop in q for crop in CROP_SYNONYMS) and not any(dist in q for dist in KNOWN_DISTRICTS):
+                if self.context.get("crop") or self.context.get("district"):
+                    return "CONTINUATION_PROMPT"
 
         # 4. Specific MSP inquiry
         if any(w in q for w in ["समर्थन मूल्य", "एमएसपी", "msp", "सरकारी भाव", "सरकारी रेट", "सरकारी गारंटी"]):
@@ -230,8 +265,18 @@ class SteeringRouter:
         # Intent 1: Greeting
         # -------------------------------------------------------------
         if intent == "GREETING":
-            resp = "राम राम किसान भाई! मैं एग्री-वॉच हूँ। आप किस फसल या किस मंडी का आज का भाव जानना चाहते हैं?"
+            resp = "हाँ किसान भाई, राम राम! आप किस फसल का मंडी भाव या सरकारी MSP जानना चाहते हैं?"
             return {"intent": intent, "spoken_hindi_response": resp, "crop": None, "district": None, "state": self.context["state"], "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
+
+        # -------------------------------------------------------------
+        # Intent 1B: Continuation Prompt (avoids quoting same price repeatedly)
+        # -------------------------------------------------------------
+        if intent == "CONTINUATION_PROMPT":
+            prev_crop = self.context.get("crop")
+            crop_hi = CROP_HINDI_NAMES.get(prev_crop, prev_crop) if prev_crop else "इस फसल"
+            prev_dist = self.context.get("district")
+            resp = f"जी भाई! {crop_hi} के अलावा क्या आप किसी अन्य फसल (जैसे चना, सरसों, मटर) या किसी दूसरे जिले का भाव जानना चाहते हैं?"
+            return {"intent": intent, "spoken_hindi_response": resp, "crop": prev_crop, "district": prev_dist, "state": self.context["state"], "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
 
         # -------------------------------------------------------------
         # Intent 2: Identity & Help
@@ -276,10 +321,11 @@ class SteeringRouter:
                 resp = "किसान भाई, आप किस फसल का सरकारी समर्थन मूल्य (MSP) जानना चाहते हैं? जैसे गेहूँ, चना, धान या सरसों?"
                 return {"intent": intent, "spoken_hindi_response": resp, "crop": None, "district": district, "state": state, "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": None}
             msp_val = self.get_msp(crop)
+            crop_hi = CROP_HINDI_NAMES.get(crop, crop)
             if msp_val:
-                resp = f"किसान भाई, 2026-27 के लिए {crop} का सरकारी समर्थन मूल्य (MSP) ₹{msp_val} प्रति क्विंटल निर्धारित है। यदि कोई व्यापारी इससे कम बोली लगाता है, तो आप सरकारी खरीद केंद्र पर संपर्क कर सकते हैं।"
+                resp = f"किसान भाई, 2026-27 के लिए {crop_hi} का सरकारी समर्थन मूल्य (MSP) ₹{msp_val} प्रति क्विंटल निर्धारित है। यदि कोई व्यापारी इससे कम बोली लगाता है, तो आप सरकारी खरीद केंद्र पर संपर्क कर सकते हैं।"
             else:
-                resp = f"{crop} के लिए कोई प्रत्यक्ष MSP दर अधिसूचित नहीं है, इसका व्यापार मंडी में खुली नीलामी के आधार पर होता है।"
+                resp = f"{crop_hi} के लिए कोई प्रत्यक्ष MSP दर अधिसूचित नहीं है, इसका व्यापार मंडी में खुली नीलामी के आधार पर होता है।"
             return {"intent": intent, "spoken_hindi_response": resp, "crop": crop, "district": district, "state": state, "reporting_date": None, "is_live": False, "records_count": 0, "records": [], "arbitrage": {}, "msp": msp_val}
 
         # -------------------------------------------------------------
@@ -390,38 +436,42 @@ class SteeringRouter:
         reporting_date: Optional[str]
     ) -> str:
         """Constructs natural, conversational spoken Hindi for farmers and traders."""
+        crop_hi = CROP_HINDI_NAMES.get(crop, crop)
         if not records:
-            return f"माफ कीजिए किसान भाई, {district} मंडी में {crop} की कोई हालिया आवक दर्ज नहीं हुई है।"
+            return f"माफ कीजिए किसान भाई, {district} क्षेत्र में {crop_hi} की कोई हालिया आवक दर्ज नहीं हुई है।"
 
-        top_market = arbitrage.get("top_market", records[0].get("market", f"{district} मंडी"))
-        top_modal = arbitrage.get("top_modal", records[0].get("modal_price"))
-        top_variety = arbitrage.get("top_variety", records[0].get("variety", "सामान्य"))
+        raw_market = arbitrage.get("top_market", records[0].get("market", f"{district} मंडी"))
+        top_market = clean_market_name(raw_market)
+        try:
+            top_modal = float(arbitrage.get("top_modal", records[0].get("modal_price", 0)))
+        except (ValueError, TypeError):
+            top_modal = 0.0
+
         date_str = reporting_date or records[0].get("arrival_date", "हाल के दिन")
 
         speech_parts = []
 
-        # Intro
+        # Intro - Natural and varied
         live_tag = "आज" if is_live else f"{date_str} को"
-        speech_parts.append(f"किसान भाई, {district} क्षेत्र की {top_market} में {crop} ({top_variety}) का भाव {live_tag} ₹{top_modal:.0f} प्रति क्विंटल रहा है।")
+        speech_parts.append(f"{top_market} में {crop_hi} का भाव {live_tag} ₹{top_modal:.0f} प्रति क्विंटल रहा है।")
 
         # MSP comparison
-        if msp and top_modal:
+        if msp and top_modal > 0:
             diff = top_modal - msp
             if diff > 0:
-                speech_parts.append(f"यह भाव सरकारी समर्थन मूल्य (MSP) ₹{msp} से ₹{diff:.0f} अधिक है।")
+                speech_parts.append(f"यह भाव सरकारी समर्थन मूल्य (MSP ₹{msp}) से ₹{diff:.0f} ऊपर चल रहा है।")
             elif diff < 0:
-                speech_parts.append(f"ध्यान दें, यह भाव सरकारी समर्थन मूल्य ₹{msp} से ₹{abs(diff):.0f} कम है। आप सरकारी खरीद केंद्र पर भी संपर्क कर सकते हैं।")
+                speech_parts.append(f"ध्यान रहे, यह भाव सरकारी समर्थन मूल्य (MSP ₹{msp}) से ₹{abs(diff):.0f} कम है। आप चाहें तो सरकारी खरीद केंद्र पर बिक्री कर सकते हैं।")
             else:
-                speech_parts.append(f"यह भाव सरकारी समर्थन मूल्य ₹{msp} के बिल्कुल बराबर है।")
+                speech_parts.append(f"यह भाव सरकारी समर्थन मूल्य (₹{msp}) के बिल्कुल बराबर है।")
 
         # Arbitrage / Multi-Mandi advice
         if arbitrage.get("recommend_arbitrage"):
             spread = arbitrage.get("spread", 0)
             net_gain = arbitrage.get("estimated_net_gain_25q", 0)
-            lowest_mkt = arbitrage.get("lowest_market")
-            speech_parts.append(f"पास की {lowest_mkt} की तुलना में यहाँ ₹{spread:.0f} प्रति क्विंटल अधिक मिल रहा है। यदि आप 25 क्विंटल माल लाते हैं, तो लगभग ₹{net_gain:.0f} का अतिरिक्त लाभ होगा।")
-        elif arbitrage.get("total_mandis_reporting", 1) > 1:
-            speech_parts.append(f"जिले की अन्य मंडियों में भी भाव इसके लगभग समान चल रहा है।")
+            lowest_raw = arbitrage.get("lowest_market")
+            lowest_mkt = clean_market_name(lowest_raw)
+            speech_parts.append(f"पास की {lowest_mkt} की तुलना में यहाँ ₹{spread:.0f} प्रति क्विंटल अधिक मिल रहा है। ट्रॉली (25 क्विंटल) लाने पर लगभग ₹{net_gain:.0f} का अतिरिक्त लाभ होगा।")
 
         return " ".join(speech_parts)
 
