@@ -1,23 +1,27 @@
 """
-Agri_watch - Sovereign LLM Adapter for LiveKit Agents
-Bridges LiveKit's standard LLM interface (llm.LLM, llm.LLMStream)
-with the Dual-Loop Steering Router, Agmarknet tool calling, and Indic NLU.
+Agri_watch - LangGraph LLM Adapter for LiveKit Agents
+Bridges LiveKit's real-time WebRTC/VAD/STT voice environment with the
+decoupled LangGraph Multi-Agent Cognitive Harness.
 """
 
 import time
 import logging
-from typing import Any, Optional, List
+from typing import Any, Optional, Dict
 from livekit.agents import llm
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
-from agents.steering_router import SteeringRouter
+
+from agents.graph import get_agriwatch_graph
+from agents.state import AgentState
+from agents.observability import traceable
 
 logger = logging.getLogger("agriwatch.llm")
 
 
-class AgriWatchLLMStream(llm.LLMStream):
-    def __init__(self, llm_instance: "AgriWatchLLM", **kwargs):
+class LangGraphLLMStream(llm.LLMStream):
+    def __init__(self, llm_instance: "AgriWatchLangGraphLLM", **kwargs):
         super().__init__(llm_instance, **kwargs)
-        self._router = llm_instance.router
+        self._graph = llm_instance.graph
+        self._llm = llm_instance
 
     async def _run(self) -> None:
         msgs = self._chat_ctx.messages()
@@ -30,9 +34,21 @@ class AgriWatchLLMStream(llm.LLMStream):
         if not user_query:
             return
 
-        logger.info(f"[*] AgriWatchLLM processing query: '{user_query}'")
-        res = self._router.process_request(query=user_query)
-        spoken_response = res.get("spoken_hindi_response", "")
+        logger.info(f"[*] LangGraphLLMStream: Ingesting query '{user_query}'")
+        self._llm.turn_counter += 1
+
+        state_input: AgentState = {
+            "turn_id": self._llm.turn_counter,
+            "user_query": user_query,
+            "session_context": self._llm.session_context
+        }
+
+        # Invoke the compiled LangGraph state machine
+        result = self._graph.invoke(state_input)
+        self._llm.session_context = result.get("session_context") or {}
+        spoken_response = result.get("spoken_hindi_response", "")
+
+        logger.info(f"[+] LangGraphLLMStream: Emitting response (Intent: {result.get('intent')}): '{spoken_response}'")
 
         chunk = llm.ChatChunk(
             id=f"agri_{int(time.time() * 1000)}",
@@ -41,25 +57,31 @@ class AgriWatchLLMStream(llm.LLMStream):
         await self._event_ch.send(chunk)
 
 
-class AgriWatchLLM(llm.LLM):
+class AgriWatchLangGraphLLM(llm.LLM):
     """
-    Sovereign Indian Agricultural Market Intelligence LLM
-    Conforms to LiveKit Agents v1.8+ llm.LLM protocol.
+    Sovereign Indic Agricultural Intelligence LLM Adapter
+    Conforms to LiveKit Agents v1.8+ llm.LLM protocol, delegating cognitive reasoning
+    and multi-agent routing to the compiled LangGraph harness.
     """
-    def __init__(self, router: Optional[SteeringRouter] = None):
+    def __init__(self, graph=None):
         super().__init__()
-        self.router = router or SteeringRouter()
+        self.graph = graph or get_agriwatch_graph()
+        self.session_context: Dict[str, Any] = {}
+        self.turn_counter: int = 0
 
     @property
     def model(self) -> str:
-        return "agri-watch-sovereign-v1"
+        return "agri-watch-langgraph-v1"
 
     @property
     def provider(self) -> str:
-        return "AgriWatch"
+        return "AgriWatch-LangGraph"
 
     def chat(self, *, chat_ctx: llm.ChatContext, **kwargs) -> llm.LLMStream:
         tools = kwargs.get("tools") or []
         conn_opts = kwargs.get("conn_options") or DEFAULT_API_CONNECT_OPTIONS
-        return AgriWatchLLMStream(self, chat_ctx=chat_ctx, tools=tools, conn_options=conn_opts)
+        return LangGraphLLMStream(self, chat_ctx=chat_ctx, tools=tools, conn_options=conn_opts)
 
+
+# Alias for backward compatibility
+AgriWatchLLM = AgriWatchLangGraphLLM
