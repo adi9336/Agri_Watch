@@ -33,6 +33,7 @@ import livekit.plugins.gnani as gnani
 from agents.steering_router import SteeringRouter
 from agents.tools import LIVEKIT_TOOLS
 from agents.observability import traceable
+from agents.llm_adapter import AgriWatchLLM
 
 logger = logging.getLogger("agriwatch-worker")
 logging.basicConfig(level=logging.INFO)
@@ -77,39 +78,24 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
     assistant_engine = AgriWatchVoiceAssistant(language="hi-IN")
-
-    session = AgentSession(
-        vad=assistant_engine.vad,
-        stt=assistant_engine.stt,
-        tts=assistant_engine.tts,
-        allow_interruptions=True
-    )
+    agri_llm = AgriWatchLLM(router=assistant_engine.router)
 
     agent = Agent(
         instructions=(
             "आप एग्री-वॉच हैं - भारतीय किसानों और ग्रामीण व्यापारियों के लिए आधिकारिक "
             "मंडी मूल्य और आर्बिट्रेज सलाहकार। सदैव सरल, सम्मानजनक और सटीक हिंदी में बोलें।"
         ),
+        llm=agri_llm,
         tools=LIVEKIT_TOOLS
     )
 
-    @session.on("user_input_transcribed")
-    def on_user_input(event: UserInputTranscribedEvent):
-        if event.is_final and event.transcript.strip():
-            text = event.transcript.strip()
-            logger.info(f"[Farmer Voice Query]: {text}")
-            reply = assistant_engine.handle_user_utterance(text)
-            asyncio.create_task(session.say(reply))
-
-    @session.on("conversation_item_added")
-    def on_conversation_item(event: ConversationItemAddedEvent):
-        # Triggered when typing text in console mode or when text chat messages arrive
-        if event.item.role == "user" and event.item.raw_text_content:
-            text = event.item.raw_text_content.strip()
-            if text:
-                logger.info(f"[Farmer Text Query]: {text}")
-                reply = assistant_engine.handle_user_utterance(text)
-                asyncio.create_task(session.say(reply))
+    session = AgentSession(
+        vad=assistant_engine.vad,
+        stt=assistant_engine.stt,
+        tts=assistant_engine.tts,
+        llm=agri_llm,
+        allow_interruptions=True
+    )
 
     # Start voice session inside the room
     await session.start(agent, room=ctx.room)
