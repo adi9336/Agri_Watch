@@ -293,6 +293,86 @@ def check_msp_floor(crop: str) -> str:
     }, ensure_ascii=False)
 
 
+# -------------------------------------------------------------------------
+# Tool 4: Get Crop Price Trend (Rising / Falling / Stable Direction)
+# -------------------------------------------------------------------------
+@traceable(name="Agmarknet:get_crop_price_trend", run_type="tool")
+def get_crop_price_trend(
+    crop: str,
+    district: str,
+    state: str = "Uttar Pradesh"
+) -> str:
+    """
+    Analyzes historical price movement and trend direction (Rising / Falling / Stable)
+    for a crop in a district across available reporting dates.
+    Call this when a farmer asks whether prices are rising, falling, or if they should sell now or wait.
+    """
+    norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
+    norm_dist = normalize_district(district)
+
+    hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop, max_results=100)
+    if not hist_records:
+        return json.dumps({
+            "status": "not_found",
+            "crop": norm_crop,
+            "district": district,
+            "message": f"{district} मंडी में {norm_crop} के रुझान का पुराना डेटा उपलब्ध नहीं है।"
+        }, ensure_ascii=False)
+
+    dated_points = []
+    for r in hist_records:
+        try:
+            dt = datetime.strptime(r.get("arrival_date", "").strip(), "%d/%m/%Y")
+            p = float(r.get("modal_price", 0))
+            m = clean_market_name(r.get("market", district))
+            dated_points.append((dt, r.get("arrival_date"), p, m))
+        except (ValueError, TypeError):
+            continue
+
+    if not dated_points:
+        return json.dumps({
+            "status": "not_found",
+            "crop": norm_crop,
+            "district": district,
+            "message": f"{district} मंडी में {norm_crop} का रुझान उपलब्ध नहीं है।"
+        }, ensure_ascii=False)
+
+    dated_points.sort(key=lambda x: x[0])
+    latest_pt = dated_points[-1]
+    latest_price = latest_pt[2]
+    latest_date = latest_pt[1]
+    market = latest_pt[3]
+
+    if len(dated_points) >= 3:
+        baseline_price = sum(p[2] for p in dated_points[-5:-1]) / len(dated_points[-5:-1])
+    else:
+        baseline_price = dated_points[0][2]
+
+    diff = latest_price - baseline_price
+
+    if diff > 30:
+        trend = "RISING"
+        advice = "भाव बढ़ रहे हैं, बाज़ार में मांग अच्छी है।"
+    elif diff < -30:
+        trend = "FALLING"
+        advice = "भाव में थोड़ी गिरावट देखी जा रही है।"
+    else:
+        trend = "STABLE"
+        advice = "भाव पिछले दिनों से लगभग स्थिर बने हुए हैं।"
+
+    return json.dumps({
+        "status": "success",
+        "crop": norm_crop,
+        "district": district,
+        "market": market,
+        "latest_price": f"₹{latest_price:.0f}",
+        "latest_date": latest_date,
+        "trend_direction": trend,
+        "trend_summary": advice,
+        "price_change_rs": f"₹{diff:+.0f}"
+    }, ensure_ascii=False)
+
+
 # LiveKit Tools Export
 try:
     from livekit.agents import llm

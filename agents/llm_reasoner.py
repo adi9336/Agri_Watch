@@ -16,7 +16,7 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Tool
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 
-from agents.tools import get_crop_price, compare_mandi_arbitrage, check_msp_floor
+from agents.tools import get_crop_price, compare_mandi_arbitrage, check_msp_floor, get_crop_price_trend
 from agents.state import AgentState
 from agents.observability import traceable
 
@@ -61,7 +61,15 @@ def check_msp_floor_tool(crop: str) -> str:
     """
     return check_msp_floor(crop=crop)
 
-LANGCHAIN_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool]
+@tool
+def get_crop_price_trend_tool(crop: str, district: str, state: str = "Uttar Pradesh") -> str:
+    """
+    Analyzes historical price movement and trend direction (Rising / Falling / Stable) for a crop in a district.
+    Call this ONLY when a farmer asks whether prices are rising, falling, or if they should sell now or wait.
+    """
+    return get_crop_price_trend(crop=crop, district=district, state=state)
+
+LANGCHAIN_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool, get_crop_price_trend_tool]
 TOOL_MAP = {t.name: t for t in LANGCHAIN_TOOLS}
 
 # 2. Strict Voice Agent System Prompt
@@ -74,6 +82,7 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
    - बिना पूछे अपने मन से कभी भी MSP की बात न जोड़ें, न ही दूसरी मंडियों की तुलना करें।
    - जब किसान स्पष्ट पूछे कि 'कहाँ बेचूँ', 'मुनाफा कहाँ है', या मंडियों की तुलना करे: केवल तभी `compare_mandi_arbitrage_tool` चलाएं और सबसे ज्यादा दाम देने वाली मंडी बताएं।
    - जब किसान 'सरकारी भाव' या 'MSP' पूछे: केवल तभी `check_msp_floor_tool` चलाएं और समर्थन मूल्य बताएं।
+   - जब किसान पूछे कि 'भाव बढ़ रहे हैं या घट रहे हैं', 'मंडी का रुझान क्या है', या 'अभी बेचूँ या रुकूँ': केवल तभी `get_crop_price_trend_tool` चलाएं और भाव का रुझान बताएं।
 2. अस्पष्ट या अधूरी जानकारी पर स्पष्टीकरण (Clarification Rules):
    - यदि किसान केवल मंडी या जिले का नाम ले लेकिन फसल न बताए (जैसे 'झाँसी का भाव बताओ'): कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [मंडी] में आप किस फसल का भाव जानना चाहते हैं?'
    - यदि किसान केवल फसल का नाम ले लेकिन जिला न बताए (जैसे 'चने का क्या भाव है'): कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [फसल] का भाव जानने के लिए कृपया अपना जिला या मंडी बताइए।'
@@ -110,11 +119,11 @@ def resolve_groq_model(groq_key: str) -> str:
         available_ids = [m.id for m in client.models.list().data]
 
         preferences = [
-            "qwen/qwen3.8-27b",
             "openai/gpt-oss-120b",
+            "qwen/qwen3.8-27b",
+            "openai/gpt-oss-20b",
             "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "openai/gpt-oss-20b"
+            "llama-3.1-8b-instant"
         ]
         for pref in preferences:
             if pref in available_ids:
@@ -165,7 +174,14 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
     session_ctx = dict(state.get("session_context") or {})
     chat_history = session_ctx.get("chat_history") or []
 
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    context_parts = []
+    if session_ctx.get("crop"):
+        context_parts.append(f"फसल={session_ctx['crop']}")
+    if session_ctx.get("district"):
+        context_parts.append(f"जिला={session_ctx['district']}")
+    context_hint = f"\n[सत्र संदर्भ: {', '.join(context_parts)}]" if context_parts else ""
+
+    messages = [SystemMessage(content=SYSTEM_PROMPT + context_hint)]
     # Feed recent conversational context (last 4 turns)
     for msg in chat_history[-4:]:
         role = msg.get("role")
@@ -200,6 +216,8 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
                     detected_intent = "ARBITRAGE"
                 elif "msp" in t_name:
                     detected_intent = "MSP"
+                elif "trend" in t_name:
+                    detected_intent = "TREND"
                 elif "price" in t_name:
                     detected_intent = "PRICE"
 
