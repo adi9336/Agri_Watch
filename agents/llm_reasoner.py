@@ -27,7 +27,7 @@ logger = logging.getLogger("agriwatch.reasoner")
 def get_crop_price_tool(
     crop: str,
     district: str,
-    state: str = "Uttar Pradesh",
+    state: Optional[str] = None,
     date: Optional[str] = None
 ) -> str:
     """
@@ -36,9 +36,9 @@ def get_crop_price_tool(
     If today's auction rate is not yet published on the portal, it automatically retrieves the nearest available date.
     Args:
         crop: Name of the crop (e.g. 'Wheat', 'Gram', 'Mustard')
-        district: Name of the district (e.g. 'Jhansi', 'Agra')
-        state: State name (default: 'Uttar Pradesh')
-        date: Target date ('today', 'yesterday', or 'DD/MM/YYYY'). Defaults to 'today'.
+        district: Name of the district (e.g. 'Jhansi', 'Agra', 'Katni')
+        state: State name (optional, e.g. 'Madhya Pradesh', 'Uttar Pradesh')
+        date: Target date ('today', 'yesterday', 'पिछले हफ्ते', or 'DD/MM/YYYY'). Defaults to 'today'.
     """
     if not date:
         date = "today"

@@ -29,7 +29,9 @@ CROP_NORM_MAP = {
     "gehu": "Wheat", "gehun": "Wheat", "गेहूँ": "Wheat", "गेहू": "Wheat", "wheat": "Wheat",
     "dhan": "Paddy", "धान": "Paddy", "chawal": "Paddy", "paddy": "Paddy",
     "sarson": "Mustard", "सरसों": "Mustard", "mustard": "Mustard", "rai": "Mustard",
-    "chana": "Gram", "chane": "Gram", "चने": "Gram", "चना": "Gram", "gram": "Gram", "chickpea": "Gram",
+    "chana": "Bengal Gram", "chane": "Bengal Gram", "चने": "Bengal Gram", "चना": "Bengal Gram", "gram": "Bengal Gram", "chickpea": "Bengal Gram",
+    "arhar": "Red gram", "तुअर": "Red gram", "अरहर": "Red gram",
+    "moong": "Green Gram", "मूँग": "Green Gram", "मूंग": "Green Gram",
     "matar": "Peas(Dry)", "मटर": "Peas(Dry)",
     "pyaz": "Onion", "प्याज": "Onion", "onion": "Onion",
     "alu": "Potato", "आलू": "Potato", "potato": "Potato"
@@ -38,6 +40,13 @@ CROP_NORM_MAP = {
 # Common Indic district mapping to English APMC database keys
 DISTRICT_NORM_MAP = {
     "झाँसी": "Jhansi", "झांसी": "Jhansi", "jhansi": "Jhansi",
+    "कटनी": "Katni", "katni": "Katni",
+    "जबलपुर": "Jabalpur", "jabalpur": "Jabalpur",
+    "ग्वालियर": "Gwalior", "gwalior": "Gwalior",
+    "सागर": "Sagar", "sagar": "Sagar",
+    "उज्जैन": "Ujjain", "ujjain": "Ujjain",
+    "इंदौर": "Indore", "indore": "Indore",
+    "कोटा": "Kota", "kota": "Kota",
     "प्रयागराज": "Prayagraj", "इलाहाबाद": "Prayagraj", "prayagraj": "Prayagraj", "allahabad": "Prayagraj",
     "एटा": "Etah", "etah": "Etah",
     "सम्भल": "Sambhal", "sambhal": "Sambhal",
@@ -83,10 +92,12 @@ def parse_spoken_date(date_str: Optional[str]) -> Optional[str]:
     if not date_str:
         return None
     d_clean = date_str.strip().lower()
-    if d_clean in ("today", "aaj", "आज"):
+    if any(w in d_clean for w in ("today", "aaj", "आज")):
         return datetime.now().strftime("%d/%m/%Y")
-    if d_clean in ("yesterday", "kal", "कल", "beeta kal", "बीता कल"):
+    if any(w in d_clean for w in ("yesterday", "kal", "कल", "beeta kal", "बीता कल")):
         return (datetime.now() - timedelta(days=1)).strftime("%d/%m/%Y")
+    if any(w in d_clean for w in ("हफ्ते", "हफ्ता", "सप्ताह", "week", "last week")):
+        return (datetime.now() - timedelta(days=7)).strftime("%d/%m/%Y")
     return normalize_date(date_str)
 
 
@@ -97,7 +108,7 @@ def parse_spoken_date(date_str: Optional[str]) -> Optional[str]:
 def get_crop_price(
     crop: str,
     district: str,
-    state: str = "Uttar Pradesh",
+    state: Optional[str] = None,
     date: Optional[str] = None
 ) -> str:
     """
