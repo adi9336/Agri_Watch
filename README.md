@@ -211,3 +211,4 @@ Agri_watch/
 
 ## 🤝 Contributing & License
 Contributions, feedback, and pull requests are welcome. Distributed under the MIT License.
+

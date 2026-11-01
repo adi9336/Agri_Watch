@@ -41,11 +41,17 @@ CROP_NORM_MAP = {
 DISTRICT_NORM_MAP = {
     "झाँसी": "Jhansi", "झांसी": "Jhansi", "jhansi": "Jhansi",
     "कटनी": "Katni", "katni": "Katni",
+    "सतना": "Satna", "satna": "Satna",
+    "दमोह": "Damoh", "damoh": "Damoh",
     "जबलपुर": "Jabalpur", "jabalpur": "Jabalpur",
     "ग्वालियर": "Gwalior", "gwalior": "Gwalior",
     "सागर": "Sagar", "sagar": "Sagar",
     "उज्जैन": "Ujjain", "ujjain": "Ujjain",
     "इंदौर": "Indore", "indore": "Indore",
+    "विदिशा": "Vidisha", "vidisha": "Vidisha",
+    "रायसेन": "Raisen", "raisen": "Raisen",
+    "सीहोर": "Sehore", "sehore": "Sehore",
+    "भोपाल": "Bhopal", "bhopal": "Bhopal",
     "कोटा": "Kota", "kota": "Kota",
     "प्रयागराज": "Prayagraj", "इलाहाबाद": "Prayagraj", "prayagraj": "Prayagraj", "allahabad": "Prayagraj",
     "एटा": "Etah", "etah": "Etah",
@@ -60,6 +66,28 @@ DISTRICT_NORM_MAP = {
     "करनाल": "Karnal", "karnal": "Karnal",
     "लुधियाना": "Ludhiana", "ludhiana": "Ludhiana"
 }
+
+# Automatic State Association to prevent wrong-state fallback lookups
+DISTRICT_STATE_MAP = {
+    "Damoh": "Madhya Pradesh", "Satna": "Madhya Pradesh", "Katni": "Madhya Pradesh",
+    "Jabalpur": "Madhya Pradesh", "Gwalior": "Madhya Pradesh", "Sagar": "Madhya Pradesh",
+    "Ujjain": "Madhya Pradesh", "Indore": "Madhya Pradesh", "Vidisha": "Madhya Pradesh",
+    "Raisen": "Madhya Pradesh", "Sehore": "Madhya Pradesh", "Bhopal": "Madhya Pradesh",
+    "Jhansi": "Uttar Pradesh", "Agra": "Uttar Pradesh", "Mathura": "Uttar Pradesh",
+    "Aligarh": "Uttar Pradesh", "Prayagraj": "Uttar Pradesh", "Etah": "Uttar Pradesh",
+    "Sambhal": "Uttar Pradesh", "Badaun": "Uttar Pradesh", "Etawah": "Uttar Pradesh",
+    "Lalitpur": "Uttar Pradesh", "Kanpur": "Uttar Pradesh", "Lucknow": "Uttar Pradesh",
+    "Varanasi": "Uttar Pradesh", "Barabanki": "Uttar Pradesh",
+    "Kota": "Rajasthan", "Rajkot": "Gujarat", "Karnal": "Haryana", "Ludhiana": "Punjab"
+}
+
+
+def infer_state(district: str, explicit_state: Optional[str] = None) -> str:
+    """Infers official state if not explicitly specified by user or defaulted."""
+    if explicit_state and explicit_state.strip().lower() not in ("", "none", "null", "uttar pradesh"):
+        return explicit_state.strip()
+    norm_d = normalize_district(district)
+    return DISTRICT_STATE_MAP.get(norm_d, explicit_state or "Uttar Pradesh")
 
 
 def normalize_district(dist: str) -> str:
@@ -118,6 +146,7 @@ def get_crop_price(
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
     norm_dist = normalize_district(district)
+    resolved_state = infer_state(norm_dist, state)
     
     # Strict date resolution: Default to today
     resolved_date_input = date if date else "today"
@@ -132,7 +161,7 @@ def get_crop_price(
     # 1. Try live data.gov.in API for today's data (must match target district)
     if _price_service.api_key and is_today:
         try:
-            direct, _, rep_date = _price_service.fetch_live_prices(state, norm_dist, norm_crop)
+            direct, _, rep_date = _price_service.fetch_live_prices(resolved_state, norm_dist, norm_crop)
             if direct:
                 records = direct
                 is_live = True
@@ -142,7 +171,7 @@ def get_crop_price(
 
     # 2. Historical & nearest-date database lookup
     if not records:
-        hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop, target_date=target_date)
+        hist_records, _ = _price_service.fetch_historical(resolved_state, norm_dist, norm_crop, target_date=target_date)
         records = hist_records
         if records:
             reporting_date = records[0].get("arrival_date")
@@ -201,28 +230,34 @@ def get_crop_price(
 def compare_mandi_arbitrage(
     crop: str,
     district: str,
-    state: str = "Uttar Pradesh",
+    state: Optional[str] = None,
     quantity_quintals: float = 25.0
 ) -> str:
     """
-    Compare commodity prices across multiple APMC mandis within a district
+    Compare commodity prices across multiple APMC mandis within a district or neighboring region
     to find the highest-paying market and calculate transport net profit.
-    Call this ONLY when a farmer asks where to sell, asks for higher profit, or asks to compare mandis.
+    Call this when a farmer asks where to sell, asks for higher profit, or asks about nearby/other mandis.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
     norm_dist = normalize_district(district)
+    resolved_state = infer_state(norm_dist, state)
     records = []
+    reporting_date = None
 
     if _price_service.api_key:
         try:
-            direct, state_wide, _ = _price_service.fetch_live_prices(state, norm_dist, norm_crop)
+            direct, state_wide, rep_date = _price_service.fetch_live_prices(resolved_state, norm_dist, norm_crop)
             records = direct or state_wide or []
+            if rep_date:
+                reporting_date = rep_date
         except Exception:
             pass
 
     if not records:
-        hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop)
+        hist_records, _ = _price_service.fetch_historical(resolved_state, norm_dist, norm_crop)
         records = hist_records or []
+        if records:
+            reporting_date = records[0].get("arrival_date")
 
     # Group by market and keep latest record per market
     market_latest = {}
@@ -234,6 +269,8 @@ def compare_mandi_arbitrage(
             modal = float(r.get("modal_price", 0))
             if modal > 0:
                 market_latest[m_name] = modal
+                if not reporting_date and r.get("arrival_date"):
+                    reporting_date = r.get("arrival_date")
         except (ValueError, TypeError):
             continue
 
@@ -252,10 +289,15 @@ def compare_mandi_arbitrage(
     freight = 15.0
     net_gain = (spread - freight) * quantity_quintals if spread > freight else 0.0
 
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    is_today = (reporting_date == today_str)
+
     return json.dumps({
         "status": "success",
         "crop": norm_crop,
         "district": district,
+        "reporting_date": reporting_date or today_str,
+        "is_today": is_today,
         "best_market": top_market,
         "best_price": top_price,
         "comparison_market": low_market,
@@ -305,24 +347,40 @@ def check_msp_floor(crop: str) -> str:
 
 
 # -------------------------------------------------------------------------
-# Tool 4: Get Crop Price Trend (Rising / Falling / Stable Direction)
+# Tool 4: Get Crop Price Trend & Multi-Day Companion Intelligence
 # -------------------------------------------------------------------------
 @traceable(name="Agmarknet:get_crop_price_trend", run_type="tool")
 def get_crop_price_trend(
     crop: str,
     district: str,
-    state: str = "Uttar Pradesh"
+    timeframe: Optional[str] = None,
+    state: Optional[str] = None
 ) -> str:
     """
-    Analyzes historical price movement and trend direction (Rising / Falling / Stable)
-    for a crop in a district across available reporting dates.
-    Call this when a farmer asks whether prices are rising, falling, or if they should sell now or wait.
+    Analyzes historical price movement, trend direction (Rising / Falling / Stable),
+    and multi-day/monthly price ranges (Min to Max) for a crop in a district.
+    Call this when a farmer asks:
+    - About past prices across multiple days, weeks, or a month (e.g. 'पिछले एक महीने का भाव', 'दिन के हिसाब से भाव', 'पिछले हफ्ते का हाल').
+    - Whether prices are rising, falling, or stable.
+    - If they should sell now or wait.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
     norm_dist = normalize_district(district)
+    resolved_state = infer_state(norm_dist, state)
 
-    hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop, max_results=100)
-    if not hist_records:
+    hist_records, _ = _price_service.fetch_historical(resolved_state, norm_dist, norm_crop, max_results=100)
+    records = list(hist_records or [])
+
+    # Include live data if available
+    if _price_service.api_key:
+        try:
+            direct, _, _ = _price_service.fetch_live_prices(resolved_state, norm_dist, norm_crop)
+            if direct:
+                records.extend(direct)
+        except Exception:
+            pass
+
+    if not records:
         return json.dumps({
             "status": "not_found",
             "crop": norm_crop,
@@ -331,12 +389,17 @@ def get_crop_price_trend(
         }, ensure_ascii=False)
 
     dated_points = []
-    for r in hist_records:
+    seen = set()
+    for r in records:
         try:
-            dt = datetime.strptime(r.get("arrival_date", "").strip(), "%d/%m/%Y")
+            arr_date = r.get("arrival_date", "").strip()
+            dt = datetime.strptime(arr_date, "%d/%m/%Y")
             p = float(r.get("modal_price", 0))
             m = clean_market_name(r.get("market", district))
-            dated_points.append((dt, r.get("arrival_date"), p, m))
+            key = (arr_date, p, m)
+            if key not in seen and p > 0:
+                seen.add(key)
+                dated_points.append((dt, arr_date, p, m))
         except (ValueError, TypeError):
             continue
 
@@ -349,7 +412,14 @@ def get_crop_price_trend(
         }, ensure_ascii=False)
 
     dated_points.sort(key=lambda x: x[0])
+
+    min_pt = min(dated_points, key=lambda x: x[2])
+    max_pt = max(dated_points, key=lambda x: x[2])
+    start_pt = dated_points[0]
     latest_pt = dated_points[-1]
+
+    min_price = min_pt[2]
+    max_price = max_pt[2]
     latest_price = latest_pt[2]
     latest_date = latest_pt[1]
     market = latest_pt[3]
@@ -357,9 +427,10 @@ def get_crop_price_trend(
     if len(dated_points) >= 3:
         baseline_price = sum(p[2] for p in dated_points[-5:-1]) / len(dated_points[-5:-1])
     else:
-        baseline_price = dated_points[0][2]
+        baseline_price = start_pt[2]
 
     diff = latest_price - baseline_price
+    total_change = latest_price - start_pt[2]
 
     if diff > 30:
         trend = "RISING"
@@ -371,16 +442,39 @@ def get_crop_price_trend(
         trend = "STABLE"
         advice = "भाव पिछले दिनों से लगभग स्थिर बने हुए हैं।"
 
+    time_label = "पिछले दिनों में"
+    if timeframe:
+        tf_lower = timeframe.lower()
+        if any(w in tf_lower for w in ("महीने", "महीना", "month", "30")):
+            time_label = "पिछले एक महीने में"
+        elif any(w in tf_lower for w in ("हफ्ते", "हफ्ता", "week", "7")):
+            time_label = "पिछले हफ्ते"
+
+    # Pre-formulated Indic companion synthesis (ready for voice TTS)
+    if min_price == max_price:
+        summary_hi = f"किसान भाई, {time_label} {district} मंडी में {norm_crop} का भाव ₹{latest_price:.0f} प्रति क्विंटल पर स्थिर रहा है।"
+    else:
+        change_phrase = f" कुल मिलाकर भाव में ₹{abs(total_change):.0f} की बढ़त दर्ज हुई है।" if total_change > 30 else (
+            f" कुल मिलाकर भाव में ₹{abs(total_change):.0f} की गिरावट देखी गई है।" if total_change < -30 else
+            " भाव सामान्य दायरे में स्थिर बने हुए हैं।"
+        )
+        summary_hi = f"किसान भाई, {time_label} {district} मंडी में {norm_crop} का भाव ₹{min_price:.0f} से ₹{max_price:.0f} प्रति क्विंटल के बीच रहा है।{change_phrase}"
+
     return json.dumps({
         "status": "success",
         "crop": norm_crop,
         "district": district,
         "market": market,
+        "timeframe": timeframe or "recent_history",
+        "price_range": f"₹{min_price:.0f} से ₹{max_price:.0f}",
+        "min_price": min_price,
+        "max_price": max_price,
         "latest_price": f"₹{latest_price:.0f}",
         "latest_date": latest_date,
         "trend_direction": trend,
         "trend_summary": advice,
-        "price_change_rs": f"₹{diff:+.0f}"
+        "price_change_rs": f"₹{diff:+.0f}",
+        "companion_summary_hi": summary_hi
     }, ensure_ascii=False)
 
 
@@ -390,7 +484,8 @@ try:
     get_crop_price_tool = llm.function_tool(description="Fetch wholesale mandi price for a crop in a district.")(get_crop_price)
     compare_mandi_arbitrage_tool = llm.function_tool(description="Compare prices across nearby mandis.")(compare_mandi_arbitrage)
     check_msp_floor_tool = llm.function_tool(description="Look up official Government MSP floor rate for a crop.")(check_msp_floor)
-    LIVEKIT_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool]
+    get_crop_price_trend_tool = llm.function_tool(description="Analyzes historical price movement, trend direction, and multi-day/monthly price ranges.")(get_crop_price_trend)
+    LIVEKIT_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool, get_crop_price_trend_tool]
 except Exception:
     LIVEKIT_TOOLS = []
 

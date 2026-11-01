@@ -16,12 +16,12 @@ from agents.observability import traceable
 # in sub-millisecond time. Entity parsing & reasoning is left to the LLM.
 # -------------------------------------------------------------
 
-OFF_TOPIC_PATTERNS = [
+OFF_TOPIC_PATTERNS = {
     "मौसम", "बारिश", "weather", "rain", "तापमान",
     "कीड़ा", "कीट", "दवा", "कीटनाशक", "रोग", "बीमारी", "doctor", "disease", "pesticide",
     "खाद", "यूरिया", "dap", "उर्वरक", "fertilizer",
     "क्रिकेट", "मैच", "चुनाव", "राजनीति", "cricket", "election", "politics"
-]
+}
 
 GREETING_WORDS = {"नमस्ते", "नमस्कार", "राम राम", "राम-राम", "प्रणाम", "हेलो", "hello", "hi", "hey"}
 AFFIRMATION_WORDS = {
@@ -43,8 +43,9 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
     q_lower = query.lower()
     session_ctx = state.get("session_context") or {}
 
-    # 1. Scope Guardrail: Off-Topic / Out of Scope Check
-    if any(p in q_lower for p in OFF_TOPIC_PATTERNS):
+    # 1. Scope Guardrail: Off-Topic / Out of Scope Check (Tokenized boundary check)
+    tokens = set(re.split(r'[\s,।!?;:()"\'-]+', q_lower))
+    if tokens & OFF_TOPIC_PATTERNS:
         return {
             "intent": "OFF_TOPIC",
             "status": "fast_exit",

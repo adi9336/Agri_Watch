@@ -45,11 +45,11 @@ def get_crop_price_tool(
     return get_crop_price(crop=crop, district=district, state=state, date=date)
 
 @tool
-def compare_mandi_arbitrage_tool(crop: str, district: str, state: str = "Uttar Pradesh") -> str:
+def compare_mandi_arbitrage_tool(crop: str, district: str, state: Optional[str] = None) -> str:
     """
-    Compare commodity prices across multiple APMC mandis within a district
+    Compare commodity prices across multiple APMC mandis within a district or neighboring region
     to find the highest-paying market and calculate transport net profit.
-    Call this ONLY when a farmer asks where to sell, asks for higher profit, or asks to compare mandis.
+    Call this when a farmer asks where to sell, asks for higher profit, or asks about nearby or other mandis (e.g. 'सतना के आसपास की मंडी', 'कोई दूसरी मंडी').
     """
     return compare_mandi_arbitrage(crop=crop, district=district, state=state)
 
@@ -62,12 +62,21 @@ def check_msp_floor_tool(crop: str) -> str:
     return check_msp_floor(crop=crop)
 
 @tool
-def get_crop_price_trend_tool(crop: str, district: str, state: str = "Uttar Pradesh") -> str:
+def get_crop_price_trend_tool(
+    crop: str,
+    district: str,
+    timeframe: Optional[str] = None,
+    state: Optional[str] = None
+) -> str:
     """
-    Analyzes historical price movement and trend direction (Rising / Falling / Stable) for a crop in a district.
-    Call this ONLY when a farmer asks whether prices are rising, falling, or if they should sell now or wait.
+    Analyzes historical price movement, trend direction (Rising / Falling / Stable),
+    and multi-day/monthly price ranges (Min to Max) for a crop in a district.
+    Call this when a farmer asks:
+    - About past prices across multiple days, weeks, or a month (e.g. 'पिछले एक महीने का भाव', 'दिन के हिसाब से भाव', 'पिछले हफ्ते का हाल').
+    - Whether prices are rising, falling, or stable.
+    - If they should sell now or wait.
     """
-    return get_crop_price_trend(crop=crop, district=district, state=state)
+    return get_crop_price_trend(crop=crop, district=district, timeframe=timeframe, state=state)
 
 LANGCHAIN_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool, get_crop_price_trend_tool]
 TOOL_MAP = {t.name: t for t in LANGCHAIN_TOOLS}
@@ -80,9 +89,9 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
 1. केवल वही बताएं जो किसान ने पूछा है (कदापि बिना पूछे अतिरिक्त विवरण न दें):
    - यदि किसान किसी फसल का भाव पूछे (जैसे 'झाँसी में गेहूँ का भाव क्या है?' या 'aaj agra me chane ka kya bhav he'): केवल `get_crop_price_tool` चलाएं और उस मंडी का भाव 1 वाक्य में बताएं (जैसे: 'किसान भाई, आगरा मंडी में चने का भाव ₹6,640 प्रति क्विंटल रहा है।')।
    - बिना पूछे अपने मन से कभी भी MSP की बात न जोड़ें, न ही दूसरी मंडियों की तुलना करें।
-   - जब किसान स्पष्ट पूछे कि 'कहाँ बेचूँ', 'मुनाफा कहाँ है', या मंडियों की तुलना करे: केवल तभी `compare_mandi_arbitrage_tool` चलाएं और सबसे ज्यादा दाम देने वाली मंडी बताएं।
+   - जब किसान स्पष्ट पूछे कि 'कहाँ बेचूँ', 'मुनाफा कहाँ है', या आसपास/दूसरी मंडियों की तुलना करे (जैसे 'सतना के आसपास की मंडी', 'कोई दूसरी मंडी'): केवल तभी `compare_mandi_arbitrage_tool` चलाएं और सबसे ज्यादा दाम देने वाली मंडी बताएं।
    - जब किसान 'सरकारी भाव' या 'MSP' पूछे: केवल तभी `check_msp_floor_tool` चलाएं और समर्थन मूल्य बताएं।
-   - जब किसान पूछे कि 'भाव बढ़ रहे हैं या घट रहे हैं', 'मंडी का रुझान क्या है', या 'अभी बेचूँ या रुकूँ': केवल तभी `get_crop_price_trend_tool` चलाएं और भाव का रुझान बताएं।
+   - जब किसान पूछे कि 'भाव बढ़ रहे हैं या घट रहे हैं', 'मंडी का रुझान क्या है', 'अभी बेचूँ या रुकूँ', या 'पिछले महीने/हफ्ते/दिनों का क्या भाव रहा' (भले ही किसान 'दिन के हिसाब से' पूछे): कदापि मना न करें कि 'मैं केवल एक दिन का जानता हूँ'। तुरंत `get_crop_price_trend_tool` चलाएं। टूल से मिले भाव का दायरा (न्यूनतम से उच्चतम) और कुल बढ़त/गिरावट 1-2 वाक्यों में एक सच्चे साथी की तरह समझाएं। (उदाहरण: 'किसान भाई, पिछले एक महीने में दमोह मंडी में चने का भाव ₹5,915 से ₹6,800 प्रति क्विंटल के बीच रहा है। कुल मिलाकर भाव में ₹885 की अच्छी बढ़त आई है।')
 2. अस्पष्ट या अधूरी जानकारी और फॉलो-अप पर नियम (Clarification & Follow-up Rules):
    - यदि किसान केवल मंडी या जिले का नाम ले लेकिन फसल न बताए (जैसे 'झाँसी का भाव बताओ') और सत्र संदर्भ में भी फसल न हो: कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [मंडी] में आप किस फसल का भाव जानना चाहते हैं?'
    - यदि किसान केवल फसल का नाम ले लेकिन जिला न बताए (जैसे 'चने का क्या भाव है') और सत्र संदर्भ में भी जिला न हो: कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [फसल] का भाव जानने के लिए कृपया अपना जिला या मंडी बताइए।'
@@ -91,6 +100,7 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
        - उदाहरण: पहले 'लखनऊ में चना' पूछा, अब किसान पूछे 'और गेहूं का भाव क्या था?': जिला लखनऊ ही रखें, फसल गेहूं करके `get_crop_price_tool` चलाएं।
        - उदाहरण: पहले 'चना' पूछा, अब किसान पूछे 'और कटनी में?': फसल चना ही रखें, जिला कटनी करके `get_crop_price_tool` चलाएं।
        - उदाहरण: किसान पूछे 'पिछले हफ्ते का?': फसल और जिला वही रखें, नई तारीख पास करें।
+       - उदाहरण: किसान पूछे 'आसपास की मंडी का बताओ?': फसल वही रखें, `compare_mandi_arbitrage_tool` चलाएं।
 3. उत्तर की लंबाई: केवल 1 से 2 छोटे वाक्य। कोई लंबा भाषण, तारीखों की भरमार या गैर-ज़रूरी लिस्ट नहीं देनी है।
 4. वाक्-अनुकूल (Voice Friendly) फॉर्मेटिंग:
    - कोई मार्कडाउन चिन्ह (जैसे **, *, #, बुलेट पॉइंट्स) बिल्कुल न लगाएं।
@@ -102,6 +112,7 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
    - यदि आज का भाव अभी दर्ज न हुआ हो (`is_exact_date=false` और किसान ने आज का पूछा था): साफ़ बताएं: 'किसान भाई, आज का भाव अभी दर्ज नहीं हुआ है, [reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।'
    - यदि किसान ने विशेष तारीख या 'पिछले हफ्ते' पूछा हो और नजदीकी तारीख मिली हो (`is_exact_date=false`): साफ़ बताएं: 'किसान भाई, [requested_date] का भाव उपलब्ध नहीं है, सबसे नजदीकी तारीख [reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।'
    - यदि किसान ने विशेष तारीख पूछी हो और ठीक उसी तारीख का भाव मिला हो (`is_exact_date=true`): '[reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।' बोलें।
+   - यदि `compare_mandi_arbitrage_tool` चलाएं और भाव आज का न हो (`is_today=false`): सबसे ज्यादा दाम वाली मंडी के साथ उसकी तारीख [reporting_date] भी स्पष्ट बोलें (जैसे: '[reporting_date] को [मंडी] में भाव ₹X रहा था') ताकि तारीख का भ्रम न रहे।
 """
 
 _active_groq_model: Optional[str] = None
