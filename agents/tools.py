@@ -58,8 +58,13 @@ def normalize_district(dist: str) -> str:
     if not dist:
         return "Jhansi"
     dist_clean = dist.strip().lower()
+    # 1. Exact match first
     for k, v in DISTRICT_NORM_MAP.items():
-        if k.lower() in dist_clean or dist_clean in k.lower():
+        if k.lower() == dist_clean:
+            return v
+    # 2. Check if known district keyword is contained in user input (e.g., "झाँसी जिला")
+    for k, v in DISTRICT_NORM_MAP.items():
+        if k.lower() in dist_clean:
             return v
     return dist.strip().title()
 
@@ -96,34 +101,35 @@ def get_crop_price(
     date: Optional[str] = None
 ) -> str:
     """
-    Fetch the wholesale APMC mandi price and modal rate for any crop in a district.
-    Supports querying by specific date (e.g. '24/09/2026', 'yesterday', 'today').
-    If date is omitted, returns the latest available price.
+    Fetch wholesale APMC mandi price and modal rate for any crop in a district.
+    Strictly accepts a date. Defaults to 'today' if not provided.
+    If today's auction is not yet published, automatically retrieves the nearest available date.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
     norm_dist = normalize_district(district)
-    target_date = parse_spoken_date(date)
-    is_today = (not target_date) or (target_date == datetime.now().strftime("%d/%m/%Y"))
+    
+    # Strict date resolution: Default to today
+    resolved_date_input = date if date else "today"
+    target_date = parse_spoken_date(resolved_date_input)
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    is_today = (target_date == today_str) or (resolved_date_input.lower() in ("today", "aaj", "आज"))
 
     records = []
     is_live = False
     reporting_date = None
 
-    # Try live data.gov.in API if user didn't request an older date
+    # 1. Try live data.gov.in API for today's data (must match target district)
     if _price_service.api_key and is_today:
         try:
-            direct, state_wide, rep_date = _price_service.fetch_live_prices(state, norm_dist, norm_crop)
+            direct, _, rep_date = _price_service.fetch_live_prices(state, norm_dist, norm_crop)
             if direct:
                 records = direct
                 is_live = True
-                reporting_date = rep_date
-            elif state_wide:
-                records = state_wide
-                reporting_date = rep_date
+                reporting_date = rep_date or today_str
         except Exception:
             pass
 
-    # Historical lookup (by specific target_date or latest available)
+    # 2. Historical & nearest-date database lookup
     if not records:
         hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop, target_date=target_date)
         records = hist_records
@@ -131,12 +137,12 @@ def get_crop_price(
             reporting_date = records[0].get("arrival_date")
 
     if not records:
-        date_msg = f" ({date} को)" if date else ""
+        date_msg = f" ({resolved_date_input} को)" if resolved_date_input else ""
         return json.dumps({
             "status": "not_found",
             "crop": norm_crop,
             "district": district,
-            "date": target_date or date,
+            "date": target_date or resolved_date_input,
             "message": f"{district} मंडी में {norm_crop} का भाव{date_msg} उपलब्ध नहीं है।"
         }, ensure_ascii=False)
 
@@ -151,6 +157,14 @@ def get_crop_price(
     except (ValueError, TypeError):
         modal_p = min_p = max_p = 0
 
+    is_exact_match = is_live or (reporting_date == target_date)
+    if is_live:
+        date_note = "आज का ताज़ा भाव"
+    elif is_exact_match:
+        date_note = f"{reporting_date} की तारीख का भाव"
+    else:
+        date_note = f"आज का भाव अभी दर्ज नहीं हुआ है, सबसे नजदीकी तारीख {reporting_date} का भाव"
+
     return json.dumps({
         "status": "success",
         "crop": norm_crop,
@@ -160,8 +174,11 @@ def get_crop_price(
         "modal_price": modal_p,
         "min_price": min_p,
         "max_price": max_p,
+        "requested_date": target_date,
         "reporting_date": reporting_date,
-        "is_live_today": is_live,
+        "is_exact_date": is_exact_match,
+        "is_today": is_live or (reporting_date == today_str),
+        "date_note": date_note,
         "verified_rate_rs_per_quintal": f"₹{modal_p:.0f}"
     }, ensure_ascii=False)
 

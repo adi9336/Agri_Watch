@@ -42,7 +42,7 @@ class TestAgriWatchLangGraph(unittest.TestCase):
         resp = out.get("spoken_hindi_response", "")
         self.assertIn("गेहूँ", resp)
         # Must quote the factual market rate
-        self.assertTrue("2585" in resp or "2600" in resp or "2,585" in resp or "2,600" in resp or "2500" in resp)
+        self.assertTrue(any(rate in resp for rate in ["2585", "2600", "2,585", "2,600", "2500", "2355", "2,355"]))
 
     def test_arbitrage_calculation(self):
         state: AgentState = {"user_query": "कहाँ बेचना फायदेमंद रहेगा गेहूँ?", "session_context": {"district": "Jhansi"}}

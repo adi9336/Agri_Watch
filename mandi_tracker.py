@@ -51,6 +51,34 @@ def normalize_date(date_str: Optional[str]) -> Optional[str]:
     return date_str
 
 
+def find_nearest_date(target_str: Optional[str], available_dates: List[str]) -> Optional[str]:
+    """Finds the chronologically nearest date from a list of available dates."""
+    if not target_str or not available_dates:
+        return None
+    norm_t = normalize_date(target_str)
+    if not norm_t:
+        return None
+    try:
+        target_dt = datetime.strptime(norm_t, "%d/%m/%Y")
+    except ValueError:
+        return None
+
+    parsed = []
+    for d in available_dates:
+        try:
+            dt = datetime.strptime(d.strip(), "%d/%m/%Y")
+            parsed.append((dt, d))
+        except ValueError:
+            continue
+
+    if not parsed:
+        return None
+
+    # Prioritize dates on or before target_dt, sorted by smallest time difference
+    parsed.sort(key=lambda x: (x[0] > target_dt, abs((x[0] - target_dt).total_seconds())))
+    return parsed[0][1]
+
+
 class MandiPriceService:
     def __init__(self, api_key: Optional[str] = None):
         env_vars = load_env()
@@ -159,8 +187,10 @@ class MandiPriceService:
                 r_comm = row.get("commodity", "").strip()
                 r_date = row.get("arrival_date", "").strip()
 
+                r_dist_clean = r_district.strip().lower()
+                target_dist_clean = district.strip().lower() if district else ""
                 state_match = not state or (state.lower() in r_state.lower())
-                district_match = not district or (district.lower() in r_district.lower())
+                district_match = not district or (r_dist_clean == target_dist_clean) or (target_dist_clean in r_dist_clean.split())
                 crop_match = not crop or (crop.lower() in r_comm.lower())
 
                 if state_match and district_match and crop_match:
@@ -175,6 +205,28 @@ class MandiPriceService:
 
         # Sort dates chronologically if any
         sorted_dates = sorted(list(all_dates_found))
+
+        # If specific date was requested but had no records, fallback to the nearest available date
+        if target_date and not results and sorted_dates:
+            nearest = find_nearest_date(target_date, sorted_dates)
+            if nearest:
+                with open(cache_file, mode="r", encoding="utf-8", errors="ignore") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        r_state = row.get("state", "").strip()
+                        r_district = row.get("district", "").strip()
+                        r_comm = row.get("commodity", "").strip()
+                        r_date = row.get("arrival_date", "").strip()
+
+                        r_dist_clean = r_district.strip().lower()
+                        target_dist_clean = district.strip().lower() if district else ""
+                        state_match = not state or (state.lower() in r_state.lower())
+                        district_match = not district or (r_dist_clean == target_dist_clean) or (target_dist_clean in r_dist_clean.split())
+                        crop_match = not crop or (crop.lower() in r_comm.lower())
+
+                        if state_match and district_match and crop_match and r_date == nearest:
+                            results.append(row)
+
         return results[:max_results], sorted_dates
 
 

@@ -32,9 +32,16 @@ def get_crop_price_tool(
 ) -> str:
     """
     Fetch wholesale APMC mandi price and modal rate for any crop in a district.
-    Supports optional date filtering (e.g. 'today', 'yesterday', 'कल', or 'DD/MM/YYYY').
-    If date is omitted, fetches the latest available rate.
+    Strictly pass a date. If the farmer did not mention a date, pass date='today'.
+    If today's auction rate is not yet published on the portal, it automatically retrieves the nearest available date.
+    Args:
+        crop: Name of the crop (e.g. 'Wheat', 'Gram', 'Mustard')
+        district: Name of the district (e.g. 'Jhansi', 'Agra')
+        state: State name (default: 'Uttar Pradesh')
+        date: Target date ('today', 'yesterday', or 'DD/MM/YYYY'). Defaults to 'today'.
     """
+    if not date:
+        date = "today"
     return get_crop_price(crop=crop, district=district, state=state, date=date)
 
 @tool
@@ -76,10 +83,11 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
    - कोई मार्कडाउन चिन्ह (जैसे **, *, #, बुलेट पॉइंट्स) बिल्कुल न लगाएं।
    - कोई इमोजी (जैसे 🙏) न लगाएं, क्योंकि वॉयस इंजन उन्हें गलत बोलता है।
    - भाव को हमेशा '₹X प्रति क्विंटल' साफ़ हिंदी में लिखें।
-5. तारीख (Date) का व्यवहार:
-   - यदि किसान 'आज' या सामान्य रूप से भाव पूछे: नवीनतम या आज का भाव बताएं।
-   - यदि किसान 'कल का', 'बीते कल का' या किसी विशेष तारीख (जैसे '24 सितम्बर') का भाव पूछे: `get_crop_price_tool` में `date` पास करें और उस तारीख का भाव बताएं।
-   - यदि किसान पूछे 'यह भाव किस तारीख का है?': टूल से मिले `reporting_date` को साफ़ हिंदी में बताएं।
+5. तारीख (Date) का सख्त नियम:
+   - `get_crop_price_tool` चलाते समय सदैव `date` पास करें: यदि किसान ने कोई तारीख न बोली हो, तो अनिवार्य रूप से `date='today'` पास करें। यदि 'कल' का पूछे तो `date='yesterday'`, यदि ख़ास तारीख पूछे तो वह तारीख पास करें।
+   - यदि आज का लाइव भाव मिला हो (`is_today=true`): 'किसान भाई, आज [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल है।' बोलें।
+   - यदि आज का भाव अभी दर्ज न हुआ हो और टूल ने नजदीकी तारीख का भाव दिया हो (`is_exact_date=false`): साफ़ बताएं: 'किसान भाई, आज का भाव अभी दर्ज नहीं हुआ है, [reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।'
+   - यदि किसान ने विशेष तारीख पूछी हो: '[reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।' बोलें।
 """
 
 _active_groq_model: Optional[str] = None
