@@ -46,7 +46,9 @@ class LangGraphLLMStream(llm.LLMStream):
         # Invoke the compiled LangGraph state machine
         result = self._graph.invoke(state_input)
         self._llm.session_context = result.get("session_context") or {}
-        spoken_response = result.get("spoken_hindi_response", "")
+        spoken_response = (result.get("spoken_hindi_response") or "").strip()
+        if not spoken_response:
+            spoken_response = "किसान भाई, कृपया अपना प्रश्न दोबारा बोलें, मैं सही भाव पता करके बताता हूँ।"
 
         logger.info(f"[+] LangGraphLLMStream: Emitting response (Intent: {result.get('intent')}): '{spoken_response}'")
 

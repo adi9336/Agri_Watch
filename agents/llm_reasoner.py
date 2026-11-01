@@ -83,10 +83,14 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
    - जब किसान स्पष्ट पूछे कि 'कहाँ बेचूँ', 'मुनाफा कहाँ है', या मंडियों की तुलना करे: केवल तभी `compare_mandi_arbitrage_tool` चलाएं और सबसे ज्यादा दाम देने वाली मंडी बताएं।
    - जब किसान 'सरकारी भाव' या 'MSP' पूछे: केवल तभी `check_msp_floor_tool` चलाएं और समर्थन मूल्य बताएं।
    - जब किसान पूछे कि 'भाव बढ़ रहे हैं या घट रहे हैं', 'मंडी का रुझान क्या है', या 'अभी बेचूँ या रुकूँ': केवल तभी `get_crop_price_trend_tool` चलाएं और भाव का रुझान बताएं।
-2. अस्पष्ट या अधूरी जानकारी पर स्पष्टीकरण (Clarification Rules):
-   - यदि किसान केवल मंडी या जिले का नाम ले लेकिन फसल न बताए (जैसे 'झाँसी का भाव बताओ'): कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [मंडी] में आप किस फसल का भाव जानना चाहते हैं?'
-   - यदि किसान केवल फसल का नाम ले लेकिन जिला न बताए (जैसे 'चने का क्या भाव है'): कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [फसल] का भाव जानने के लिए कृपया अपना जिला या मंडी बताइए।'
-   - यदि सवाल में या पिछली बातचीत के संदर्भ में फसल और जिला दोनों मौजूद हों (जैसे पहले 'चना' और फिर 'आगरा'): तुरंत `get_crop_price_tool` चलाएं।
+2. अस्पष्ट या अधूरी जानकारी और फॉलो-अप पर नियम (Clarification & Follow-up Rules):
+   - यदि किसान केवल मंडी या जिले का नाम ले लेकिन फसल न बताए (जैसे 'झाँसी का भाव बताओ') और सत्र संदर्भ में भी फसल न हो: कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [मंडी] में आप किस फसल का भाव जानना चाहते हैं?'
+   - यदि किसान केवल फसल का नाम ले लेकिन जिला न बताए (जैसे 'चने का क्या भाव है') और सत्र संदर्भ में भी जिला न हो: कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [फसल] का भाव जानने के लिए कृपया अपना जिला या मंडी बताइए।'
+   - फॉलो-अप (Follow-up) सवाल नियम:
+     * यदि पिछली बातचीत के संदर्भ में पहले से फसल या जिला मौजूद हो, तो किसान के नए सवाल में छूटी हुई जानकारी सत्र संदर्भ ([सत्र संदर्भ]) से स्वतः ले लें:
+       - उदाहरण: पहले 'लखनऊ में चना' पूछा, अब किसान पूछे 'और गेहूं का भाव क्या था?': जिला लखनऊ ही रखें, फसल गेहूं करके `get_crop_price_tool` चलाएं।
+       - उदाहरण: पहले 'चना' पूछा, अब किसान पूछे 'और कटनी में?': फसल चना ही रखें, जिला कटनी करके `get_crop_price_tool` चलाएं।
+       - उदाहरण: किसान पूछे 'पिछले हफ्ते का?': फसल और जिला वही रखें, नई तारीख पास करें।
 3. उत्तर की लंबाई: केवल 1 से 2 छोटे वाक्य। कोई लंबा भाषण, तारीखों की भरमार या गैर-ज़रूरी लिस्ट नहीं देनी है।
 4. वाक्-अनुकूल (Voice Friendly) फॉर्मेटिंग:
    - कोई मार्कडाउन चिन्ह (जैसे **, *, #, बुलेट पॉइंट्स) बिल्कुल न लगाएं।
@@ -95,8 +99,9 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
 5. तारीख (Date) का सख्त नियम:
    - `get_crop_price_tool` चलाते समय सदैव `date` पास करें: यदि किसान ने कोई तारीख न बोली हो, तो अनिवार्य रूप से `date='today'` पास करें। यदि 'कल' का पूछे तो `date='yesterday'`, यदि ख़ास तारीख पूछे तो वह तारीख पास करें।
    - यदि आज का लाइव भाव मिला हो (`is_today=true`): 'किसान भाई, आज [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल है।' बोलें।
-   - यदि आज का भाव अभी दर्ज न हुआ हो और टूल ने नजदीकी तारीख का भाव दिया हो (`is_exact_date=false`): साफ़ बताएं: 'किसान भाई, आज का भाव अभी दर्ज नहीं हुआ है, [reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।'
-   - यदि किसान ने विशेष तारीख पूछी हो: '[reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।' बोलें।
+   - यदि आज का भाव अभी दर्ज न हुआ हो (`is_exact_date=false` और किसान ने आज का पूछा था): साफ़ बताएं: 'किसान भाई, आज का भाव अभी दर्ज नहीं हुआ है, [reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।'
+   - यदि किसान ने विशेष तारीख या 'पिछले हफ्ते' पूछा हो और नजदीकी तारीख मिली हो (`is_exact_date=false`): साफ़ बताएं: 'किसान भाई, [requested_date] का भाव उपलब्ध नहीं है, सबसे नजदीकी तारीख [reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।'
+   - यदि किसान ने विशेष तारीख पूछी हो और ठीक उसी तारीख का भाव मिला हो (`is_exact_date=true`): '[reporting_date] को [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल रहा था।' बोलें।
 """
 
 _active_groq_model: Optional[str] = None
@@ -152,7 +157,8 @@ def get_groq_llm() -> Optional[ChatGroq]:
         return ChatGroq(
             model=model_name,
             temperature=0.1,
-            max_tokens=300,
+            max_tokens=800,
+            reasoning_effort="low",
             api_key=groq_key
         )
     except Exception as e:
@@ -182,10 +188,12 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
     context_hint = f"\n[सत्र संदर्भ: {', '.join(context_parts)}]" if context_parts else ""
 
     messages = [SystemMessage(content=SYSTEM_PROMPT + context_hint)]
-    # Feed recent conversational context (last 4 turns)
-    for msg in chat_history[-4:]:
+    # Feed recent conversational context (up to last 6 turns), filtering empty content
+    for msg in chat_history[-6:]:
         role = msg.get("role")
-        content = msg.get("content", "")
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
         if role == "user":
             messages.append(HumanMessage(content=content))
         elif role == "assistant":
@@ -238,7 +246,11 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
 
             # Second turn: Synthesize concise spoken Hindi
             final_ai_msg: AIMessage = llm.invoke(messages)
-            spoken_response = final_ai_msg.content.strip()
+            spoken_response = (final_ai_msg.content or "").strip()
+            if not spoken_response:
+                crop_lbl = detected_crop or updated_ctx.get("crop", "")
+                dist_lbl = detected_dist or updated_ctx.get("district", "")
+                spoken_response = f"किसान भाई, {dist_lbl} मंडी में {crop_lbl} का भाव दर्ज कर लिया गया है।"
 
             # Record turn in persistent history
             updated_history = list(chat_history)
@@ -256,7 +268,11 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
             }
 
         # Direct response (Clarification or general response)
-        spoken_response = ai_msg.content.strip()
+        spoken_response = (ai_msg.content or "").strip()
+        if not spoken_response:
+            logger.warning("[!] LLM returned empty response without tool calls, applying safety response.")
+            spoken_response = "किसान भाई, कृपया अपना प्रश्न दोबारा बोलें, मैं सही भाव पता करके बताता हूँ।"
+
         updated_history = list(chat_history)
         updated_history.append({"role": "user", "content": query})
         updated_history.append({"role": "assistant", "content": spoken_response})

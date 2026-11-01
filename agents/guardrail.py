@@ -24,7 +24,10 @@ OFF_TOPIC_PATTERNS = [
 ]
 
 GREETING_WORDS = {"नमस्ते", "नमस्कार", "राम राम", "राम-राम", "प्रणाम", "हेलो", "hello", "hi", "hey"}
-AFFIRMATION_WORDS = {"हाँ", "हां", "ठीक", "ठीक है", "अच्छा", "ok", "okay", "theek", "theek hai"}
+AFFIRMATION_WORDS = {
+    "हाँ", "हां", "ठीक", "ठीक है", "अच्छा", "ok", "okay", "theek", "theek hai",
+    "ओके", "राइट", "ओके राइट", "सही", "सही है", "अच्छा जी", "हाँजी", "जी", "शुक्रिया", "धन्यवाद"
+}
 
 
 @traceable(name="LangGraphNode:GuardrailAndScope", run_type="chain")

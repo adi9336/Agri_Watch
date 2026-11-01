@@ -72,12 +72,15 @@ def fallback_node(state: AgentState) -> Dict[str, Any]:
     modal = data.get("modal_price", 2500)
     market = data.get("market", district)
 
+    updated_ctx = dict(session_ctx)
+    updated_ctx["crop"] = crop
+    updated_ctx["district"] = district
     return {
         "intent": "PRICE",
         "spoken_hindi_response": f"किसान भाई, {market} मंडी में {hindi_crop} का भाव ₹{modal:.0f} प्रति क्विंटल रहा है।",
         "status": "success",
         "crop": crop,
         "district": district,
-        "session_context": {"crop": crop, "district": district}
+        "session_context": updated_ctx
     }
 
