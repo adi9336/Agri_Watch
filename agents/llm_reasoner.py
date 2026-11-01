@@ -24,12 +24,18 @@ logger = logging.getLogger("agriwatch.reasoner")
 
 # 1. Define LangChain Structured Tools for LLM
 @tool
-def get_crop_price_tool(crop: str, district: str, state: str = "Uttar Pradesh") -> str:
+def get_crop_price_tool(
+    crop: str,
+    district: str,
+    state: str = "Uttar Pradesh",
+    date: Optional[str] = None
+) -> str:
     """
-    Fetch the latest wholesale APMC mandi price and modal rate for any crop in a district.
-    Call this when a farmer asks for the price or rate of a specific crop.
+    Fetch wholesale APMC mandi price and modal rate for any crop in a district.
+    Supports optional date filtering (e.g. 'today', 'yesterday', 'कल', or 'DD/MM/YYYY').
+    If date is omitted, fetches the latest available rate.
     """
-    return get_crop_price(crop=crop, district=district, state=state)
+    return get_crop_price(crop=crop, district=district, state=state, date=date)
 
 @tool
 def compare_mandi_arbitrage_tool(crop: str, district: str, state: str = "Uttar Pradesh") -> str:
@@ -70,6 +76,10 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
    - कोई मार्कडाउन चिन्ह (जैसे **, *, #, बुलेट पॉइंट्स) बिल्कुल न लगाएं।
    - कोई इमोजी (जैसे 🙏) न लगाएं, क्योंकि वॉयस इंजन उन्हें गलत बोलता है।
    - भाव को हमेशा '₹X प्रति क्विंटल' साफ़ हिंदी में लिखें।
+5. तारीख (Date) का व्यवहार:
+   - यदि किसान 'आज' या सामान्य रूप से भाव पूछे: नवीनतम या आज का भाव बताएं।
+   - यदि किसान 'कल का', 'बीते कल का' या किसी विशेष तारीख (जैसे '24 सितम्बर') का भाव पूछे: `get_crop_price_tool` में `date` पास करें और उस तारीख का भाव बताएं।
+   - यदि किसान पूछे 'यह भाव किस तारीख का है?': टूल से मिले `reporting_date` को साफ़ हिंदी में बताएं।
 """
 
 _active_groq_model: Optional[str] = None

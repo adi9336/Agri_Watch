@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import re
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -72,8 +73,20 @@ def clean_market_name(market: str) -> str:
     return clean
 
 
+def parse_spoken_date(date_str: Optional[str]) -> Optional[str]:
+    """Parses spoken/relative dates into DD/MM/YYYY format."""
+    if not date_str:
+        return None
+    d_clean = date_str.strip().lower()
+    if d_clean in ("today", "aaj", "आज"):
+        return datetime.now().strftime("%d/%m/%Y")
+    if d_clean in ("yesterday", "kal", "कल", "beeta kal", "बीता कल"):
+        return (datetime.now() - timedelta(days=1)).strftime("%d/%m/%Y")
+    return normalize_date(date_str)
+
+
 # -------------------------------------------------------------------------
-# Tool 1: Get Crop Price (Clean, factual, single-purpose)
+# Tool 1: Get Crop Price (Clean, factual, single-purpose, date-aware)
 # -------------------------------------------------------------------------
 @traceable(name="Agmarknet:get_crop_price", run_type="tool")
 def get_crop_price(
@@ -83,17 +96,21 @@ def get_crop_price(
     date: Optional[str] = None
 ) -> str:
     """
-    Fetch the latest wholesale APMC mandi price and modal rate for any crop in a district.
-    Call this when a farmer asks for the price or rate of a specific crop.
+    Fetch the wholesale APMC mandi price and modal rate for any crop in a district.
+    Supports querying by specific date (e.g. '24/09/2026', 'yesterday', 'today').
+    If date is omitted, returns the latest available price.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
     norm_dist = normalize_district(district)
+    target_date = parse_spoken_date(date)
+    is_today = (not target_date) or (target_date == datetime.now().strftime("%d/%m/%Y"))
+
     records = []
     is_live = False
     reporting_date = None
 
-    # Try live data.gov.in API
-    if _price_service.api_key and (not date or date.lower() == "today"):
+    # Try live data.gov.in API if user didn't request an older date
+    if _price_service.api_key and is_today:
         try:
             direct, state_wide, rep_date = _price_service.fetch_live_prices(state, norm_dist, norm_crop)
             if direct:
@@ -106,20 +123,21 @@ def get_crop_price(
         except Exception:
             pass
 
-    # Historical fallback
+    # Historical lookup (by specific target_date or latest available)
     if not records:
-        norm_date = normalize_date(date) if date and date.lower() != "today" else None
-        hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop, target_date=norm_date)
+        hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop, target_date=target_date)
         records = hist_records
         if records:
             reporting_date = records[0].get("arrival_date")
 
     if not records:
+        date_msg = f" ({date} को)" if date else ""
         return json.dumps({
             "status": "not_found",
             "crop": norm_crop,
             "district": district,
-            "message": f"{district} मंडी में {norm_crop} का भाव उपलब्ध नहीं है।"
+            "date": target_date or date,
+            "message": f"{district} मंडी में {norm_crop} का भाव{date_msg} उपलब्ध नहीं है।"
         }, ensure_ascii=False)
 
     top = records[0]
@@ -142,6 +160,8 @@ def get_crop_price(
         "modal_price": modal_p,
         "min_price": min_p,
         "max_price": max_p,
+        "reporting_date": reporting_date,
+        "is_live_today": is_live,
         "verified_rate_rs_per_quintal": f"₹{modal_p:.0f}"
     }, ensure_ascii=False)
 
