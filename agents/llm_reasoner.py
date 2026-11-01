@@ -57,12 +57,16 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
 
 सख्त नियम (STRICT VOICE RULES):
 1. केवल वही बताएं जो किसान ने पूछा है (कदापि बिना पूछे अतिरिक्त विवरण न दें):
-   - यदि किसान किसी फसल का भाव पूछे (जैसे 'झाँसी में गेहूँ का भाव क्या है?'): केवल `get_crop_price_tool` चलाएं और उस मंडी का भाव 1 वाक्य में बताएं (जैसे: 'किसान भाई, झाँसी मंडी में गेहूँ का भाव ₹2,500 प्रति क्विंटल रहा है।')। यदि आज का लाइव भाव न हो, तब भी टूल द्वारा दिए गए भाव को बताएं, कभी यह न कहें कि भाव उपलब्ध नहीं है।
+   - यदि किसान किसी फसल का भाव पूछे (जैसे 'झाँसी में गेहूँ का भाव क्या है?' या 'aaj agra me chane ka kya bhav he'): केवल `get_crop_price_tool` चलाएं और उस मंडी का भाव 1 वाक्य में बताएं (जैसे: 'किसान भाई, आगरा मंडी में चने का भाव ₹6,640 प्रति क्विंटल रहा है।')।
    - बिना पूछे अपने मन से कभी भी MSP की बात न जोड़ें, न ही दूसरी मंडियों की तुलना करें।
    - जब किसान स्पष्ट पूछे कि 'कहाँ बेचूँ', 'मुनाफा कहाँ है', या मंडियों की तुलना करे: केवल तभी `compare_mandi_arbitrage_tool` चलाएं और सबसे ज्यादा दाम देने वाली मंडी बताएं।
    - जब किसान 'सरकारी भाव' या 'MSP' पूछे: केवल तभी `check_msp_floor_tool` चलाएं और समर्थन मूल्य बताएं।
-2. उत्तर की लंबाई: केवल 1 से 2 छोटे वाक्य। कोई लंबा भाषण, तारीखों की भरमार या गैर-ज़रूरी लिस्ट नहीं देनी है।
-3. वाक्-अनुकूल (Voice Friendly) फॉर्मेटिंग:
+2. अस्पष्ट या अधूरी जानकारी पर स्पष्टीकरण (Clarification Rules):
+   - यदि किसान केवल मंडी या जिले का नाम ले लेकिन फसल न बताए (जैसे 'झाँसी का भाव बताओ'): कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [मंडी] में आप किस फसल का भाव जानना चाहते हैं?'
+   - यदि किसान केवल फसल का नाम ले लेकिन जिला न बताए (जैसे 'चने का क्या भाव है'): कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [फसल] का भाव जानने के लिए कृपया अपना जिला या मंडी बताइए।'
+   - यदि सवाल में या पिछली बातचीत के संदर्भ में फसल और जिला दोनों मौजूद हों (जैसे पहले 'चना' और फिर 'आगरा'): तुरंत `get_crop_price_tool` चलाएं।
+3. उत्तर की लंबाई: केवल 1 से 2 छोटे वाक्य। कोई लंबा भाषण, तारीखों की भरमार या गैर-ज़रूरी लिस्ट नहीं देनी है।
+4. वाक्-अनुकूल (Voice Friendly) फॉर्मेटिंग:
    - कोई मार्कडाउन चिन्ह (जैसे **, *, #, बुलेट पॉइंट्स) बिल्कुल न लगाएं।
    - कोई इमोजी (जैसे 🙏) न लगाएं, क्योंकि वॉयस इंजन उन्हें गलत बोलता है।
    - भाव को हमेशा '₹X प्रति क्विंटल' साफ़ हिंदी में लिखें।
@@ -140,16 +144,19 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
         return {"status": "fallback"}
 
     query = state.get("user_query", "").strip()
-    session_ctx = state.get("session_context") or {}
+    session_ctx = dict(state.get("session_context") or {})
+    chat_history = session_ctx.get("chat_history") or []
 
-    context_hint = ""
-    if session_ctx.get("crop") or session_ctx.get("district"):
-        context_hint = f"\n[पिछला संदर्भ: फसल={session_ctx.get('crop')}, जिला={session_ctx.get('district')}]"
-
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT + context_hint),
-        HumanMessage(content=query)
-    ]
+    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    # Feed recent conversational context (last 4 turns)
+    for msg in chat_history[-4:]:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "user":
+            messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            messages.append(AIMessage(content=content))
+    messages.append(HumanMessage(content=query))
 
     try:
         llm_with_tools = llm.bind_tools(LANGCHAIN_TOOLS)
@@ -197,6 +204,12 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
             final_ai_msg: AIMessage = llm.invoke(messages)
             spoken_response = final_ai_msg.content.strip()
 
+            # Record turn in persistent history
+            updated_history = list(chat_history)
+            updated_history.append({"role": "user", "content": query})
+            updated_history.append({"role": "assistant", "content": spoken_response})
+            updated_ctx["chat_history"] = updated_history[-6:]
+
             return {
                 "spoken_hindi_response": spoken_response,
                 "intent": detected_intent,
@@ -206,12 +219,20 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
                 "session_context": updated_ctx
             }
 
-        # Direct response (if no tool needed)
+        # Direct response (Clarification or general response)
         spoken_response = ai_msg.content.strip()
+        updated_history = list(chat_history)
+        updated_history.append({"role": "user", "content": query})
+        updated_history.append({"role": "assistant", "content": spoken_response})
+        session_ctx["chat_history"] = updated_history[-6:]
+
+        is_clarification = any(w in spoken_response for w in ["फसल", "जिला", "मंडी", "बताइए", "चाहते हैं"])
+        detected_intent = "CLARIFICATION" if is_clarification else "CONVERSATION"
+
         return {
             "spoken_hindi_response": spoken_response,
-            "intent": "CONVERSATION",
-            "status": "success",
+            "intent": detected_intent,
+            "status": "clarification" if is_clarification else "success",
             "session_context": session_ctx
         }
 

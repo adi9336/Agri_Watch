@@ -28,7 +28,7 @@ CROP_NORM_MAP = {
     "gehu": "Wheat", "gehun": "Wheat", "गेहूँ": "Wheat", "गेहू": "Wheat", "wheat": "Wheat",
     "dhan": "Paddy", "धान": "Paddy", "chawal": "Paddy", "paddy": "Paddy",
     "sarson": "Mustard", "सरसों": "Mustard", "mustard": "Mustard", "rai": "Mustard",
-    "chana": "Gram Raw(Chholia)", "चना": "Gram Raw(Chholia)",
+    "chana": "Gram", "chane": "Gram", "चने": "Gram", "चना": "Gram", "gram": "Gram", "chickpea": "Gram",
     "matar": "Peas(Dry)", "मटर": "Peas(Dry)",
     "pyaz": "Onion", "प्याज": "Onion", "onion": "Onion",
     "alu": "Potato", "आलू": "Potato", "potato": "Potato"

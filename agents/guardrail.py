@@ -10,20 +10,21 @@ from typing import Dict, Any, Optional
 from agents.state import AgentState
 from agents.observability import traceable
 
-# Indic crop identifiers for fast disambiguation check
-KNOWN_CROPS = [
-    "गेहूँ", "गेहू", "gehu", "wheat", "धान", "dhan", "चावल", "paddy", "बासमती",
-    "सरसों", "sarson", "mustard", "राई", "चना", "chana", "मूँग", "moong",
-    "मसूर", "masur", "मटर", "matar", "अरहर", "तुअर", "arhar", "मक्का", "makka",
-    "मूंगफली", "सोयाबीन", "प्याज", "pyaz", "कांदा", "टमाटर", "आलू", "alu"
+# -------------------------------------------------------------
+# Agri_watch - Scope & Conversational Fast-Path Guardrail
+# Intercepts off-topic queries, standalone greetings, and short affirmations
+# in sub-millisecond time. Entity parsing & reasoning is left to the LLM.
+# -------------------------------------------------------------
+
+OFF_TOPIC_PATTERNS = [
+    "मौसम", "बारिश", "weather", "rain", "तापमान",
+    "कीड़ा", "कीट", "दवा", "कीटनाशक", "रोग", "बीमारी", "doctor", "disease", "pesticide",
+    "खाद", "यूरिया", "dap", "उर्वरक", "fertilizer",
+    "क्रिकेट", "मैच", "चुनाव", "राजनीति", "cricket", "election", "politics"
 ]
 
-KNOWN_DISTRICTS = [
-    "झाँसी", "झांसी", "jhansi", "प्रयागराज", "prayagraj", "इलाहाबाद", "allahabad",
-    "एटा", "etah", "सम्भल", "sambhal", "बदायूँ", "बदायूं", "badaun", "इटावा", "etawah",
-    "ललितपुर", "lalitpur", "आगरा", "agra", "मथुरा", "mathura", "अलीगढ़", "aligarh",
-    "राजकोट", "rajkot", "करनाल", "karnal", "लुधियाना", "ludhiana"
-]
+GREETING_WORDS = {"नमस्ते", "नमस्कार", "राम राम", "राम-राम", "प्रणाम", "हेलो", "hello", "hi", "hey"}
+AFFIRMATION_WORDS = {"हाँ", "हां", "ठीक", "ठीक है", "अच्छा", "ok", "okay", "theek", "theek hai"}
 
 
 @traceable(name="LangGraphNode:GuardrailAndScope", run_type="chain")
@@ -31,74 +32,45 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
     """
     Validates user query against project boundary:
     1. Off-topic (Weather, Crop diseases, Politics) -> Fast Polite Redirect
-    2. Greetings (Namaste, Ram Ram) -> Fast Greeting
-    3. Continuation (Haan, Ok, Theek hai) -> Prompt for next query (No repeat loops)
-    4. Missing Crop (Only district mentioned) -> Clarification Prompt
-    5. Valid Market Query -> Proceeds to LLM Reasoner
+    2. Standalone Affirmation (Haan, Ok, Theek hai) -> Prompt for next query (No repeat loops)
+    3. Standalone Greeting (Namaste, Ram Ram) -> Fast Greeting
+    4. Market Queries & Disambiguation -> Delegates to LLM Reasoner
     """
     query = state.get("user_query", "").strip()
     q_lower = query.lower()
     session_ctx = state.get("session_context") or {}
 
-    # -------------------------------------------------------------
     # 1. Scope Guardrail: Off-Topic / Out of Scope Check
-    # (Strictly block crop diseases, weather, politics, non-mandi topics)
-    # -------------------------------------------------------------
-    off_topic_patterns = [
-        "मौसम", "बारिश", "weather", "rain", "तापमान",
-        "कीड़ा", "कीट", "दवा", "कीटनाशक", "रोग", "बीमारी", "doctor", "disease", "pesticide",
-        "खाद", "यूरिया", "dap", "उर्वरक", "fertilizer",
-        "क्रिकेट", "मैच", "चुनाव", "राजनीति", "cricket", "election", "politics"
-    ]
-    if any(p in q_lower for p in off_topic_patterns):
+    if any(p in q_lower for p in OFF_TOPIC_PATTERNS):
         return {
             "intent": "OFF_TOPIC",
             "status": "fast_exit",
-            "spoken_hindi_response": "किसान भाई, मैं केवल कृषि मंडी भाव, मंडियों के मुनाफे की तुलना और सरकारी MSP का सलाहकार हूँ। कृपया मंडी भाव से जुड़ा प्रश्न पूछें।"
+            "spoken_hindi_response": "किसान भाई, मैं केवल कृषि मंडी भाव, मंडियों के मुनाफे की तुलना और सरकारी MSP का सलाहकार हूँ। कृपया मंडी भाव से जुड़ा प्रश्न पूछें।",
+            "session_context": session_ctx
         }
 
-    # -------------------------------------------------------------
     # 2. Conversational Fillers / Continuation (Prevents looping)
-    # -------------------------------------------------------------
-    is_affirmation = any(w in q_lower for w in ["हाँ", "ठीक है", "अच्छा", "ok", "okay", "theek hai"]) and len(query.split()) <= 4
-    has_crop_mention = any(c in q_lower for c in KNOWN_CROPS)
-    has_dist_mention = any(d in q_lower for d in KNOWN_DISTRICTS)
-
-    if is_affirmation and not has_crop_mention and not has_dist_mention:
+    words = q_lower.split()
+    if len(words) <= 3 and any(w in AFFIRMATION_WORDS for w in [q_lower, " ".join(words[:2]), words[0]]):
         return {
             "intent": "CONTINUATION",
             "status": "fast_exit",
-            "spoken_hindi_response": "जी भाई! क्या आप किसी अन्य फसल या दूसरी मंडी का भाव जानना चाहते हैं?"
+            "spoken_hindi_response": "जी भाई! क्या आप किसी अन्य फसल या दूसरी मंडी का भाव जानना चाहते हैं?",
+            "session_context": session_ctx
         }
 
-    # -------------------------------------------------------------
-    # 3. Simple Greetings
-    # -------------------------------------------------------------
-    is_greeting = any(w in q_lower for w in ["नमस्ते", "नमस्कार", "राम राम", "राम-राम", "प्रणाम", "हेलो", "hello", "hi", "hey"])
-    if is_greeting and not has_crop_mention and not has_dist_mention:
+    # 3. Simple Standalone Greetings (only if short and purely a greeting)
+    if len(words) <= 3 and any(w in GREETING_WORDS for w in [q_lower, " ".join(words[:2]), words[0]]):
         return {
             "intent": "GREETING",
             "status": "fast_exit",
-            "spoken_hindi_response": "राम राम किसान भाई! बताइए, आप किस फसल या मंडी का भाव जानना चाहते हैं?"
+            "spoken_hindi_response": "राम राम किसान भाई! बताइए, आप किस फसल या मंडी का भाव जानना चाहते हैं?",
+            "session_context": session_ctx
         }
 
-    # -------------------------------------------------------------
-    # 4. Missing Crop Disambiguation
-    # (Farmer mentioned a district but forgot to name the crop)
-    # -------------------------------------------------------------
-    if has_dist_mention and not has_crop_mention and not session_ctx.get("crop"):
-        # Extract matched district name for a personalized prompt
-        matched_dist = next((d for d in KNOWN_DISTRICTS if d in q_lower), "इस")
-        return {
-            "intent": "CLARIFICATION",
-            "status": "fast_exit",
-            "spoken_hindi_response": f"किसान भाई, {matched_dist} मंडी में आप किस फसल का भाव जानना चाहते हैं?"
-        }
-
-    # -------------------------------------------------------------
-    # 5. In-Scope Agricultural Query -> Proceed to LLM Reasoner
-    # -------------------------------------------------------------
+    # 4. In-Scope Market Query -> Proceed to LLM Reasoner
     return {
-        "status": "proceed_to_llm"
+        "status": "proceed_to_llm",
+        "session_context": session_ctx
     }
 
