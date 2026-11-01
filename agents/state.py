@@ -1,39 +1,32 @@
 """
 Agri_watch - LangGraph State Definition
-Defines the central schema for conversational memory, Indic entity context,
-specialist tool outputs, and spoken synthesis.
+Defines the central schema for conversational turns, extracted entities,
+tool execution payloads, and spoken voice output.
 """
 
 from typing import TypedDict, Optional, List, Dict, Any
 
 
 class AgentState(TypedDict, total=False):
-    # Conversational turn info
+    # Turn Info
     turn_id: int
     user_query: str
-    language: str
 
-    # Extracted Indic entities
-    crop: Optional[str]             # Standard Agmarknet name (e.g., "Wheat", "Mustard")
-    crop_hindi: Optional[str]       # Spoken Hindi name (e.g., "गेहूँ", "सरसों")
-    district: Optional[str]         # Standard district (e.g., "Jhansi", "Prayagraj")
-    district_hindi: Optional[str]   # Spoken Hindi district (e.g., "झाँसी", "प्रयागराज")
-    state: Optional[str]            # Standard state (e.g., "Uttar Pradesh")
+    # Extracted Entities
+    crop: Optional[str]
+    district: Optional[str]
+    state: Optional[str]
 
-    # Routing & Intent
-    intent: str                     # "PRICE_INQUIRY" | "ARBITRAGE" | "MSP" | "GREETING" | "CLARIFICATION" | "CONTINUATION" | "OFF_TOPIC"
-    missing_entities: List[str]     # ["crop"], ["district"], or []
+    # Routing & Intent Classification
+    intent: str                  # "PRICE" | "ARBITRAGE" | "MSP" | "GREETING" | "OFF_TOPIC" | "CLARIFICATION" | "CONTINUATION"
+    status: str                  # "proceed_to_llm" | "fast_exit" | "success" | "clarification" | "fallback"
 
-    # Specialist Agent Outputs
-    mandi_records: Optional[List[Dict[str, Any]]]
-    arbitrage_result: Optional[Dict[str, Any]]
-    msp_comparison: Optional[Dict[str, Any]]
+    # Tool Execution
+    tool_calls: Optional[List[Dict[str, Any]]]
+    tool_results: Optional[List[Dict[str, Any]]]
 
-    # Response generation
-    clarification_prompt: Optional[str]
+    # Output Voice Response
     spoken_hindi_response: str
-    status: str                     # "success" | "clarification" | "error"
 
-    # Multi-turn persistent context
+    # Persistent multi-turn session memory
     session_context: Dict[str, Any]
-

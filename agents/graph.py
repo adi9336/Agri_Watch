@@ -1,113 +1,71 @@
 """
 Agri_watch - LangGraph Multi-Agent Cognitive Pipeline
 Combines:
-1. Groq LLM (Llama-3.3-70b) Autonomous Reasoning & Native Tool Calling (when GROQ_API_KEY is active)
-2. Sovereign Indic State Fallback Pipeline (NLU, Clarification, Specialist Nodes, Synthesizer)
+1. Fast-Path Guardrail & Scope Validation Node (Sub-millisecond exits for off-topic, greetings, and missing entities)
+2. Groq LLM Autonomous Reasoning Node (Native tool calling for Mandi Prices, Arbitrage, and MSP)
+3. Sovereign Fallback Node (Zero-crash resilience if cloud LLM is unavailable)
 """
 
 import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from langgraph.graph import StateGraph, START, END
 
 from agents.state import AgentState
-from agents.nodes.nlu import nlu_node
-from agents.nodes.clarification import clarification_node
-from agents.nodes.greeting import greeting_node
-from agents.nodes.price_specialist import price_specialist_node
-from agents.nodes.arbitrage_specialist import arbitrage_specialist_node
-from agents.nodes.msp_specialist import msp_specialist_node
-from agents.nodes.synthesizer import synthesizer_node
-from agents.nodes.llm_reasoner import groq_reasoner_node
+from agents.guardrail import guardrail_node
+from agents.llm_reasoner import llm_reasoner_node
+from agents.fallback import fallback_node
 
 logger = logging.getLogger("agriwatch.graph")
 
 
-def entry_router(state: AgentState) -> str:
-    """Routes to Groq LLM reasoner if GROQ_API_KEY is set, else sovereign NLU."""
-    if os.getenv("GROQ_API_KEY"):
-        return "groq_reasoner"
-    return "nlu"
+def route_guardrail(state: AgentState) -> str:
+    """Routes based on scope guardrail check."""
+    if state.get("status") == "fast_exit":
+        return "fast_exit"
+    return "proceed_to_llm"
 
 
-def route_after_groq(state: AgentState) -> str:
-    """Checks if Groq succeeded or needs fallback to sovereign Indic pipeline."""
-    if state.get("status") == "llm_fallback":
-        return "nlu"
-    return END
-
-
-def route_after_nlu(state: AgentState) -> str:
-    """Conditional router determining next graph node based on intent and entity completeness."""
-    intent = state.get("intent", "PRICE_INQUIRY")
-    missing = state.get("missing_entities") or []
-
-    # Non-transactional conversational turns
-    if intent in ("GREETING", "IDENTITY_HELP", "GRATITUDE", "CONTINUATION", "OFF_TOPIC"):
-        return "greeting"
-
-    # Missing critical entities (e.g. crop missing)
-    if "crop" in missing:
-        return "clarification"
-
-    # Transactional pricing pipeline
-    return "price_specialist"
+def route_llm_result(state: AgentState) -> str:
+    """Routes based on LLM execution status."""
+    if state.get("status") == "fallback":
+        return "fallback"
+    return "success"
 
 
 def build_agriwatch_graph():
-    """Builds and compiles the Agri_watch LangGraph StateGraph."""
+    """Builds and compiles the consolidated 3-node Agri_watch LangGraph StateGraph."""
     workflow = StateGraph(AgentState)
 
     # 1. Register Nodes
-    workflow.add_node("groq_reasoner", groq_reasoner_node)
-    workflow.add_node("nlu", nlu_node)
-    workflow.add_node("clarification", clarification_node)
-    workflow.add_node("greeting", greeting_node)
-    workflow.add_node("price_specialist", price_specialist_node)
-    workflow.add_node("arbitrage_specialist", arbitrage_specialist_node)
-    workflow.add_node("msp_specialist", msp_specialist_node)
-    workflow.add_node("synthesizer", synthesizer_node)
+    workflow.add_node("guardrail", guardrail_node)
+    workflow.add_node("llm_reasoner", llm_reasoner_node)
+    workflow.add_node("fallback", fallback_node)
 
-    # 2. Define Routing & Edges
+    # 2. Define Flow & Conditional Edges
+    workflow.add_edge(START, "guardrail")
+
+    # Branching from Guardrail (Fast exits vs LLM processing)
     workflow.add_conditional_edges(
-        START,
-        entry_router,
+        "guardrail",
+        route_guardrail,
         {
-            "groq_reasoner": "groq_reasoner",
-            "nlu": "nlu"
+            "fast_exit": END,
+            "proceed_to_llm": "llm_reasoner"
         }
     )
 
-    # Branching from Groq LLM Node
+    # Branching from LLM Reasoner (Success vs Fallback)
     workflow.add_conditional_edges(
-        "groq_reasoner",
-        route_after_groq,
+        "llm_reasoner",
+        route_llm_result,
         {
-            "nlu": "nlu",
-            END: END
+            "success": END,
+            "fallback": "fallback"
         }
     )
 
-    # Conditional branching from Sovereign Indic NLU
-    workflow.add_conditional_edges(
-        "nlu",
-        route_after_nlu,
-        {
-            "greeting": "greeting",
-            "clarification": "clarification",
-            "price_specialist": "price_specialist"
-        }
-    )
-
-    # Terminal edges for non-data nodes
-    workflow.add_edge("greeting", END)
-    workflow.add_edge("clarification", END)
-
-    # Specialist pipeline execution
-    workflow.add_edge("price_specialist", "arbitrage_specialist")
-    workflow.add_edge("arbitrage_specialist", "msp_specialist")
-    workflow.add_edge("msp_specialist", "synthesizer")
-    workflow.add_edge("synthesizer", END)
+    workflow.add_edge("fallback", END)
 
     # 3. Compile executable graph
     return workflow.compile()
@@ -126,15 +84,16 @@ def get_agriwatch_graph():
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding='utf-8')
-    print("[*] Testing Agri_watch LangGraph (with Groq LLM integration)...")
+    print("[*] Testing Consolidated Agri_watch LangGraph Architecture...")
 
     graph = get_agriwatch_graph()
     test_queries = [
         ("Greeting", "राम राम भैया"),
-        ("Price Inquiry", "झाँसी में गेहूँ का क्या रेट है?"),
+        ("Off-Topic Guardrail", "आज दिल्ली में मौसम कैसा है?"),
+        ("Missing Crop Disambiguation", "झाँसी का भाव बताओ"),
+        ("Price Discovery", "झाँसी में गेहूँ का क्या रेट है?"),
         ("Arbitrage Inquiry", "कहाँ बेचना फायदेमंद रहेगा गेहूँ?"),
         ("MSP Inquiry", "गेहूँ का सरकारी समर्थन मूल्य क्या है?"),
-        ("Missing Crop", "झाँसी का भाव बताओ"),
         ("Continuation Affirmation", "हाँ ठीक है")
     ]
 
@@ -148,4 +107,6 @@ if __name__ == "__main__":
         }
         output = graph.invoke(state_input)
         session_ctx = output.get("session_context", {})
+        print(f"Status : {output.get('status')}")
+        print(f"Intent : {output.get('intent')}")
         print(f"Spoken : {output.get('spoken_hindi_response')}")

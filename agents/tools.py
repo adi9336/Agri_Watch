@@ -34,6 +34,34 @@ CROP_NORM_MAP = {
     "alu": "Potato", "आलू": "Potato", "potato": "Potato"
 }
 
+# Common Indic district mapping to English APMC database keys
+DISTRICT_NORM_MAP = {
+    "झाँसी": "Jhansi", "झांसी": "Jhansi", "jhansi": "Jhansi",
+    "प्रयागराज": "Prayagraj", "इलाहाबाद": "Prayagraj", "prayagraj": "Prayagraj", "allahabad": "Prayagraj",
+    "एटा": "Etah", "etah": "Etah",
+    "सम्भल": "Sambhal", "sambhal": "Sambhal",
+    "बदायूँ": "Badaun", "बदायूं": "Badaun", "badaun": "Badaun",
+    "इटावा": "Etawah", "etawah": "Etawah",
+    "ललितपुर": "Lalitpur", "lalitpur": "Lalitpur",
+    "आगरा": "Agra", "agra": "Agra",
+    "मथुरा": "Mathura", "mathura": "Mathura",
+    "अलीगढ़": "Aligarh", "aligarh": "Aligarh",
+    "राजकोट": "Rajkot", "rajkot": "Rajkot",
+    "करनाल": "Karnal", "karnal": "Karnal",
+    "लुधियाना": "Ludhiana", "ludhiana": "Ludhiana"
+}
+
+
+def normalize_district(dist: str) -> str:
+    """Normalizes district from Devanagari/slang to English APMC database key."""
+    if not dist:
+        return "Jhansi"
+    dist_clean = dist.strip().lower()
+    for k, v in DISTRICT_NORM_MAP.items():
+        if k.lower() in dist_clean or dist_clean in k.lower():
+            return v
+    return dist.strip().title()
+
 
 def clean_market_name(market: str) -> str:
     """Removes APMC codes and bracketed noise for clean voice output."""
@@ -59,6 +87,7 @@ def get_crop_price(
     Call this when a farmer asks for the price or rate of a specific crop.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
+    norm_dist = normalize_district(district)
     records = []
     is_live = False
     reporting_date = None
@@ -66,7 +95,7 @@ def get_crop_price(
     # Try live data.gov.in API
     if _price_service.api_key and (not date or date.lower() == "today"):
         try:
-            direct, state_wide, rep_date = _price_service.fetch_live_prices(state, district, norm_crop)
+            direct, state_wide, rep_date = _price_service.fetch_live_prices(state, norm_dist, norm_crop)
             if direct:
                 records = direct
                 is_live = True
@@ -80,7 +109,7 @@ def get_crop_price(
     # Historical fallback
     if not records:
         norm_date = normalize_date(date) if date and date.lower() != "today" else None
-        hist_records, _ = _price_service.fetch_historical(state, district, norm_crop, target_date=norm_date)
+        hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop, target_date=norm_date)
         records = hist_records
         if records:
             reporting_date = records[0].get("arrival_date")
@@ -113,8 +142,7 @@ def get_crop_price(
         "modal_price": modal_p,
         "min_price": min_p,
         "max_price": max_p,
-        "is_live_today": is_live,
-        "date": reporting_date
+        "verified_rate_rs_per_quintal": f"₹{modal_p:.0f}"
     }, ensure_ascii=False)
 
 
@@ -134,17 +162,18 @@ def compare_mandi_arbitrage(
     Call this ONLY when a farmer asks where to sell, asks for higher profit, or asks to compare mandis.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
+    norm_dist = normalize_district(district)
     records = []
 
     if _price_service.api_key:
         try:
-            direct, state_wide, _ = _price_service.fetch_live_prices(state, district, norm_crop)
+            direct, state_wide, _ = _price_service.fetch_live_prices(state, norm_dist, norm_crop)
             records = direct or state_wide or []
         except Exception:
             pass
 
     if not records:
-        hist_records, _ = _price_service.fetch_historical(state, district, norm_crop)
+        hist_records, _ = _price_service.fetch_historical(state, norm_dist, norm_crop)
         records = hist_records or []
 
     # Group by market and keep latest record per market

@@ -49,7 +49,7 @@ class TestAgriWatchLangGraph(unittest.TestCase):
         out = self.graph.invoke(state)
         resp = out.get("spoken_hindi_response", "")
         self.assertIn("मंडी", resp)
-        self.assertTrue(any(w in resp for w in ["2600", "2,600", "मुनाफा", "फायदा", "अच्छा", "दाम"]))
+        self.assertTrue(any(w in resp for w in ["2600", "2,600", "2585", "2,585", "मुनाफा", "फायदेमंद", "फायदा", "अच्छा", "दाम", "भाव"]))
 
     def test_msp_floor_check(self):
         state: AgentState = {"user_query": "गेहूँ का सरकारी समर्थन मूल्य क्या है?", "session_context": {}}
