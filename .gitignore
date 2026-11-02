@@ -24,3 +24,6 @@ venv/
 *.wav
 *.mp3
 *.pcm
+
+# Scratch & temporary investigation artifacts
+scratch/

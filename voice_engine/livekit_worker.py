@@ -16,6 +16,9 @@ import os
 import sys
 import asyncio
 import logging
+import threading
+import time
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -208,6 +211,61 @@ async def entrypoint(ctx: JobContext):
     await session.say(greeting)
 
 
+# =====================================================================
+# Automated Mandi Data Sync Scheduler (8:00 PM IST Daily Cron)
+# =====================================================================
+_sync_scheduler_started = False
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def start_daily_sync_scheduler(run_immediate_check: bool = False):
+    """
+    Spawns a lightweight background daemon thread that monitors clock time.
+    At 20:00 (8:00 PM IST) daily, it triggers sync_mandi_data(days=1)
+    to ingest all finalized APMC market rates across India into the local snapshot.
+    """
+    global _sync_scheduler_started
+    if _sync_scheduler_started:
+        return
+    _sync_scheduler_started = True
+
+    def _scheduler_loop():
+        try:
+            from scripts.daily_mandi_sync import sync_mandi_data
+        except ImportError:
+            logger.warning("[!] Could not import sync_mandi_data; daily sync scheduler disabled.")
+            return
+
+        logger.info("[+] Mandi Daily Sync Cron Scheduler active (Scheduled for 20:00 IST daily).")
+        last_synced_day = None
+
+        if run_immediate_check:
+            try:
+                logger.info("[*] Mandi Sync Scheduler: Running startup check...")
+                sync_mandi_data(days=1)
+            except Exception as e:
+                logger.error(f"[!] Startup mandi sync notice: {e}")
+
+        while True:
+            try:
+                now_ist = datetime.now(timezone.utc).astimezone(IST)
+                today_str = now_ist.strftime("%Y-%m-%d")
+
+                # Trigger at or after 20:00 (8:00 PM IST) once per calendar day
+                if now_ist.hour >= 20 and last_synced_day != today_str:
+                    logger.info(f"[*] 8:00 PM IST Mandi Sync Triggered for {today_str}...")
+                    res = sync_mandi_data(days=1)
+                    last_synced_day = today_str
+                    logger.info(f"[+] 8:00 PM IST Mandi Sync Completed: {res.get('status')} (Added: {res.get('new_records_added', 0)} records)")
+            except Exception as e:
+                logger.error(f"[!] Error in Mandi Daily Sync Scheduler loop: {e}")
+
+            time.sleep(60)
+
+    t = threading.Thread(target=_scheduler_loop, daemon=True, name="AgriWatch-DailySyncScheduler")
+    t.start()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         print("[*] Running Agri_watch Voice Worker (LangGraph Powered) Pre-Flight Test...")
@@ -223,6 +281,9 @@ if __name__ == "__main__":
         print(f"    \"{reply}\"\n")
         print("[+] Voice Worker Pre-Flight PASSED.")
         sys.exit(0)
+
+    # Start background daily mandi price synchronization scheduler (8:00 PM IST)
+    start_daily_sync_scheduler()
 
     # Standard LiveKit CLI entrypoint (supports: dev, start, download-files, lk console)
     cli.run_app(server)
