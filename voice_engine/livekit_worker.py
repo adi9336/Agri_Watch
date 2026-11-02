@@ -29,8 +29,9 @@ if PARENT_DIR not in sys.path:
 from dotenv import load_dotenv
 load_dotenv(os.path.join(PARENT_DIR, ".env"))
 
-from livekit.agents import JobContext, cli, AgentServer
-from livekit.agents.voice import AgentSession, Agent
+from livekit.agents import JobContext, JobProcess, cli, AgentServer, llm
+from livekit.agents.voice import AgentSession, Agent, UserStateChangedEvent, CloseEvent
+from livekit.agents.voice.turn import TurnHandlingOptions, InterruptionOptions
 from livekit.plugins import silero
 import livekit.plugins.gnani as gnani
 
@@ -46,16 +47,55 @@ logging.basicConfig(level=logging.INFO)
 server = AgentServer()
 
 
+def prewarm(proc: JobProcess):
+    """Pre-allocates Silero VAD into memory at worker process startup."""
+    try:
+        proc.userdata["vad"] = silero.VAD.load()
+        logger.info("[+] Prewarmed Silero VAD into worker process memory.")
+    except Exception as e:
+        logger.warning(f"[!] Prewarming VAD warning: {e}")
+
+
+server.setup_fnc = prewarm
+
+
+class AgriWatchVoiceAgent(Agent):
+    """
+    Enhanced Voice Agent with sub-150ms Indic backchanneling and acoustic pre-responses.
+    Eliminates dead air during multi-mandi arbitrage or 30-day historical scans.
+    """
+    def __init__(self, instructions: str, llm: Any):
+        super().__init__(instructions=instructions, llm=llm)
+
+    async def on_user_turn_completed(self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage):
+        """Fires immediately when STT finishes, before the cognitive LLM reasoning finishes."""
+        text = ""
+        if hasattr(new_message, "text_content") and new_message.text_content:
+            text = new_message.text_content.strip()
+        elif hasattr(new_message, "content"):
+            if isinstance(new_message.content, str):
+                text = new_message.content.strip()
+            elif isinstance(new_message.content, list):
+                text = " ".join(str(c) for c in new_message.content).strip()
+
+        # For heavy temporal or multi-mandi comparisons, speak an instant acoustic filler
+        if any(w in text for w in ("आसपास", "दूसरी मंडी", "कहाँ बेचूँ", "मुनाफा", "महीने", "महीना", "हफ्ते", "हफ्ता", "रुझान", "दिन के हिसाब")):
+            filler = "जी किसान भाई, मैं पूरा रिकॉर्ड देख रहा हूँ..."
+            logger.info(f"[*] Emitting acoustic pre-response filler: '{filler}'")
+            try:
+                self.session.say(filler, add_to_chat_ctx=False)
+            except Exception as e:
+                logger.warning(f"[!] Filler emit notice: {e}")
+
+
 class AgriWatchVoiceAssistant:
-    def __init__(self, language: str = "hi-IN", default_district: str = "Jhansi"):
+    def __init__(self, language: str = "hi-IN", default_district: str = "Jhansi", vad: Optional[Any] = None):
         self.language = language
         self.default_district = default_district
         self.graph = get_agriwatch_graph()
         self.session_context: Dict[str, Any] = {}
         self.turn_counter: int = 0
-
-        # Load Silero VAD (Inner Reactive Loop: speech start, end, sub-100ms barge-in)
-        self.vad = silero.VAD.load()
+        self.vad = vad or silero.VAD.load()
 
         # Load Gnani Speech Plugins (use_streaming=False uses local Silero VAD to eliminate 60s idle socket drops)
         gnani_key = os.getenv("GNANI_API_KEY")
@@ -86,14 +126,15 @@ class AgriWatchVoiceAssistant:
 
 @server.rtc_session(agent_name="agri_watch")
 async def entrypoint(ctx: JobContext):
-    """LiveKit agent worker room entrypoint (LiveKit = Supporting Voice Environment)."""
+    """LiveKit agent worker room entrypoint with advanced voice interaction primitives."""
     logger.info(f"Connecting to LiveKit room: {ctx.room.name}")
     await ctx.connect()
 
-    assistant_engine = AgriWatchVoiceAssistant(language="hi-IN")
+    cached_vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") and ctx.proc else None
+    assistant_engine = AgriWatchVoiceAssistant(language="hi-IN", vad=cached_vad)
     agri_llm = AgriWatchLangGraphLLM(graph=assistant_engine.graph)
 
-    agent = Agent(
+    agent = AgriWatchVoiceAgent(
         instructions=(
             "आप एग्री-वॉच हैं - भारतीय किसानों और ग्रामीण व्यापारियों के लिए आधिकारिक "
             "मंडी मूल्य और आर्बिट्रेज सलाहकार। सदैव सरल, सम्मानजनक और सटीक हिंदी में बोलें।"
@@ -101,13 +142,62 @@ async def entrypoint(ctx: JobContext):
         llm=agri_llm
     )
 
+    # Modern voice turn handling: adaptive barge-in, false-interruption resumption, and background noise filtering
+    turn_handling = TurnHandlingOptions(
+        interruption=InterruptionOptions(
+            enabled=True,
+            resume_false_interruption=True,
+            false_interruption_timeout=1.2,
+            min_duration=0.4,
+            min_words=2,
+        )
+    )
+
     session = AgentSession(
         vad=assistant_engine.vad,
         stt=assistant_engine.stt,
         tts=assistant_engine.tts,
         llm=agri_llm,
-        allow_interruptions=True
+        turn_handling=turn_handling,
+        user_away_timeout=12.0
     )
+
+    # Proactive Inactive Farmer Re-engagement Task
+    inactivity_task: Optional[asyncio.Task] = None
+
+    async def user_presence_task():
+        """Prompts inactive callers before closing the session to preserve quota."""
+        try:
+            for attempt in range(2):
+                await asyncio.sleep(12)
+                ping_msg = "किसान भाई, क्या आप किसी अन्य मंडी का भाव जानना चाहते हैं, या कोई और सहायता करूँ?"
+                logger.info(f"[*] Inactivity check {attempt + 1}: Prompting user.")
+                await session.say(ping_msg)
+            
+            # Second timeout without response -> graceful farewell
+            await asyncio.sleep(10)
+            farewell = "किसान भाई, कोई आवाज़ नहीं आ रही है। यदि आपको पुनः भाव जानना हो तो दोबारा जुड़ें। राम राम!"
+            logger.info("[*] Inactivity limit reached: Initiating graceful disconnect.")
+            await session.say(farewell, allow_interruptions=False)
+            await asyncio.sleep(3)
+            session.shutdown()
+        except asyncio.CancelledError:
+            pass
+
+    @session.on("user_state_changed")
+    def _user_state_changed(ev: UserStateChangedEvent):
+        nonlocal inactivity_task
+        if ev.new_state == "away":
+            if inactivity_task is None or inactivity_task.done():
+                inactivity_task = asyncio.create_task(user_presence_task())
+        else:
+            if inactivity_task is not None and not inactivity_task.done():
+                inactivity_task.cancel()
+                inactivity_task = None
+
+    @session.on("close")
+    def _on_session_close(ev: CloseEvent):
+        logger.info(f"[+] Agri_watch session closed gracefully (Reason: {ev.reason})")
 
     # Start voice session inside the room
     await session.start(agent, room=ctx.room)
