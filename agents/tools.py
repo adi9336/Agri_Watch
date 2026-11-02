@@ -478,6 +478,36 @@ def get_crop_price_trend(
     }, ensure_ascii=False)
 
 
+# -------------------------------------------------------------------------
+# Tool 5: Consult Economic Specialist (Progressive Disclosure - Deep Holding/Freight)
+# -------------------------------------------------------------------------
+@traceable(name="Specialist:consult_economic_specialist", run_type="tool")
+def consult_economic_specialist(
+    crop: str,
+    district: str,
+    query_type: str = "holding_strategy",
+    holding_days: int = 30,
+    vehicle_type: str = "tractor",
+    quantity_quintals: float = 50.0,
+    state: Optional[str] = None
+) -> str:
+    """
+    Summons the Specialized Economic Sub-Agent for deep holding storage ROI and vehicle freight logistics.
+    Invoked ONLY on explicit demand when a farmer asks whether to store/hold or for detailed vehicle calculations.
+    """
+    from agents.specialists.economic_advisor import run_economic_specialist
+    res = run_economic_specialist(
+        query_type=query_type,
+        crop=crop,
+        district=district,
+        holding_days=holding_days,
+        vehicle_type=vehicle_type,
+        quantity_quintals=quantity_quintals,
+        state=state
+    )
+    return json.dumps(res, ensure_ascii=False)
+
+
 # LiveKit Tools Export
 try:
     from livekit.agents import llm
@@ -485,7 +515,14 @@ try:
     compare_mandi_arbitrage_tool = llm.function_tool(description="Compare prices across nearby mandis.")(compare_mandi_arbitrage)
     check_msp_floor_tool = llm.function_tool(description="Look up official Government MSP floor rate for a crop.")(check_msp_floor)
     get_crop_price_trend_tool = llm.function_tool(description="Analyzes historical price movement, trend direction, and multi-day/monthly price ranges.")(get_crop_price_trend)
-    LIVEKIT_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool, get_crop_price_trend_tool]
+    consult_economic_specialist_tool = llm.function_tool(description="Deep holding ROI, warehouse storage fees, and vehicle-specific freight calculations.")(consult_economic_specialist)
+    LIVEKIT_TOOLS = [
+        get_crop_price_tool,
+        compare_mandi_arbitrage_tool,
+        check_msp_floor_tool,
+        get_crop_price_trend_tool,
+        consult_economic_specialist_tool
+    ]
 except Exception:
     LIVEKIT_TOOLS = []
 

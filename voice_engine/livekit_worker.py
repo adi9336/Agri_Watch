@@ -81,8 +81,15 @@ class AgriWatchVoiceAgent(Agent):
             elif isinstance(new_message.content, list):
                 text = " ".join(str(c) for c in new_message.content).strip()
 
-        # For heavy temporal or multi-mandi comparisons, speak an instant acoustic filler
-        if any(w in text for w in ("आसपास", "दूसरी मंडी", "कहाँ बेचूँ", "मुनाफा", "महीने", "महीना", "हफ्ते", "हफ्ता", "रुझान", "दिन के हिसाब")):
+        # For heavy temporal, holding ROI, or multi-mandi comparisons, speak an instant acoustic filler
+        if any(w in text for w in ("रोक कर", "रोककर", "वेयरहाउस", "गोदाम", "पूरा हिसाब", "स्टोर")):
+            filler = "जी किसान भाई, मैं वेयरहाउस और मुनाफे का पूरा हिसाब जोड़ रहा हूँ..."
+            logger.info(f"[*] Emitting specialist pre-response filler: '{filler}'")
+            try:
+                self.session.say(filler, add_to_chat_ctx=False)
+            except Exception as e:
+                logger.warning(f"[!] Filler emit notice: {e}")
+        elif any(w in text for w in ("आसपास", "दूसरी मंडी", "कहाँ बेचूँ", "मुनाफा", "महीने", "महीना", "हफ्ते", "हफ्ता", "रुझान", "दिन के हिसाब")):
             filler = "जी किसान भाई, मैं पूरा रिकॉर्ड देख रहा हूँ..."
             logger.info(f"[*] Emitting acoustic pre-response filler: '{filler}'")
             try:

@@ -16,7 +16,13 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Tool
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 
-from agents.tools import get_crop_price, compare_mandi_arbitrage, check_msp_floor, get_crop_price_trend
+from agents.tools import (
+    get_crop_price,
+    compare_mandi_arbitrage,
+    check_msp_floor,
+    get_crop_price_trend,
+    consult_economic_specialist
+)
 from agents.state import AgentState
 from agents.observability import traceable
 
@@ -74,11 +80,44 @@ def get_crop_price_trend_tool(
     Call this when a farmer asks:
     - About past prices across multiple days, weeks, or a month (e.g. 'पिछले एक महीने का भाव', 'दिन के हिसाब से भाव', 'पिछले हफ्ते का हाल').
     - Whether prices are rising, falling, or stable.
-    - If they should sell now or wait.
     """
     return get_crop_price_trend(crop=crop, district=district, timeframe=timeframe, state=state)
 
-LANGCHAIN_TOOLS = [get_crop_price_tool, compare_mandi_arbitrage_tool, check_msp_floor_tool, get_crop_price_trend_tool]
+@tool
+def consult_economic_specialist_tool(
+    crop: str,
+    district: str,
+    query_type: Optional[str] = "holding_strategy",
+    holding_days: Optional[int] = 30,
+    vehicle_type: Optional[str] = "tractor",
+    quantity_quintals: Optional[float] = 50.0,
+    state: Optional[str] = None
+) -> str:
+    """
+    Summons the Specialized Economic & Holding Strategy Sub-Agent for deep holding storage ROI and vehicle freight calculations.
+    Call this ONLY when a farmer explicitly asks:
+    - Whether they should hold/store crop in a warehouse/godown vs sell now (e.g. 'माल रोक कर बेचूँ या अभी?', 'वेयरहाउस में रखने का फायदा होगा या नुकसान?', 'स्टोर करने का खर्चा बताओ').
+    - For vehicle-specific freight or transport profit calculations (e.g. 'ट्रैक्टर से ले जाऊँ तो कितना बचेगा?', 'पिकअप या गाड़ी का भाड़ा जोड़कर बताओ').
+    - For deep financial calculations (e.g. 'पूरा हिसाब बताओ', 'विस्तार से नफा-नुकसान समझाओ').
+    Do NOT call this for regular fast price discovery.
+    """
+    return consult_economic_specialist(
+        crop=crop,
+        district=district,
+        query_type=query_type or "holding_strategy",
+        holding_days=holding_days or 30,
+        vehicle_type=vehicle_type or "tractor",
+        quantity_quintals=quantity_quintals or 50.0,
+        state=state
+    )
+
+LANGCHAIN_TOOLS = [
+    get_crop_price_tool,
+    compare_mandi_arbitrage_tool,
+    check_msp_floor_tool,
+    get_crop_price_trend_tool,
+    consult_economic_specialist_tool
+]
 TOOL_MAP = {t.name: t for t in LANGCHAIN_TOOLS}
 
 # 2. Strict Voice Agent System Prompt
@@ -91,7 +130,8 @@ SYSTEM_PROMPT = """आप एग्री-वॉच (Agri-Watch) हैं - भ
    - बिना पूछे अपने मन से कभी भी MSP की बात न जोड़ें, न ही दूसरी मंडियों की तुलना करें।
    - जब किसान स्पष्ट पूछे कि 'कहाँ बेचूँ', 'मुनाफा कहाँ है', या आसपास/दूसरी मंडियों की तुलना करे (जैसे 'सतना के आसपास की मंडी', 'कोई दूसरी मंडी'): केवल तभी `compare_mandi_arbitrage_tool` चलाएं और सबसे ज्यादा दाम देने वाली मंडी बताएं।
    - जब किसान 'सरकारी भाव' या 'MSP' पूछे: केवल तभी `check_msp_floor_tool` चलाएं और समर्थन मूल्य बताएं।
-   - जब किसान पूछे कि 'भाव बढ़ रहे हैं या घट रहे हैं', 'मंडी का रुझान क्या है', 'अभी बेचूँ या रुकूँ', या 'पिछले महीने/हफ्ते/दिनों का क्या भाव रहा' (भले ही किसान 'दिन के हिसाब से' पूछे): कदापि मना न करें कि 'मैं केवल एक दिन का जानता हूँ'। तुरंत `get_crop_price_trend_tool` चलाएं। टूल से मिले भाव का दायरा (न्यूनतम से उच्चतम) और कुल बढ़त/गिरावट 1-2 वाक्यों में एक सच्चे साथी की तरह समझाएं। (उदाहरण: 'किसान भाई, पिछले एक महीने में दमोह मंडी में चने का भाव ₹5,915 से ₹6,800 प्रति क्विंटल के बीच रहा है। कुल मिलाकर भाव में ₹885 की अच्छी बढ़त आई है।')
+   - जब किसान पूछे कि 'भाव बढ़ रहे हैं या घट रहे हैं', 'मंडी का रुझान क्या है', या 'पिछले महीने/हफ्ते/दिनों का क्या भाव रहा' (भले ही किसान 'दिन के हिसाब से' पूछे): तुरंत get_crop_price_trend_tool चलाएं। टूल से मिले भाव का दायरा और कुल बढ़त/गिरावट 1-2 वाक्यों में समझाएं।
+   - जब किसान विशेष रूप से पूछे कि 'माल रोक कर बेचूँ या अभी बेचूँ', 'वेयरहाउस में रखने का क्या खर्चा और फायदा होगा', 'ट्रैक्टर/गाड़ी से ले जाने पर पूरा हिसाब बताओ', या 'विस्तार से नफा-नुकसान समझाओ': तुरंत विशेषज्ञ सब-एजेंट टूल consult_economic_specialist_tool चलाएं और टूल से मिले companion_summary_hi को संक्षेप में 1-2 वाक्यों में किसान को बताएं।
 2. अस्पष्ट या अधूरी जानकारी और फॉलो-अप पर नियम (Clarification & Follow-up Rules):
    - यदि किसान केवल मंडी या जिले का नाम ले लेकिन फसल न बताए (जैसे 'झाँसी का भाव बताओ') और सत्र संदर्भ में भी फसल न हो: कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [मंडी] में आप किस फसल का भाव जानना चाहते हैं?'
    - यदि किसान केवल फसल का नाम ले लेकिन जिला न बताए (जैसे 'चने का क्या भाव है') और सत्र संदर्भ में भी जिला न हो: कोई टूल न चलाएं। सीधे पूछें: 'किसान भाई, [फसल] का भाव जानने के लिए कृपया अपना जिला या मंडी बताइए।'
