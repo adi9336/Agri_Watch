@@ -82,6 +82,62 @@ DISTRICT_STATE_MAP = {
 }
 
 
+# Market Directory mapping: market_name -> {market, district, state}
+MARKET_DIR_PATH = os.path.join(PARENT_DIR, "data", "market_directory.json")
+_MARKET_DIRECTORY = {}
+if os.path.exists(MARKET_DIR_PATH):
+    try:
+        with open(MARKET_DIR_PATH, "r", encoding="utf-8") as f:
+            _MARKET_DIRECTORY = json.load(f)
+    except Exception:
+        pass
+
+
+def resolve_location(loc: str, explicit_state: Optional[str] = None) -> tuple:
+    """
+    Intelligently resolves any mandi name, sub-market, tehsil, or district (in Hindi or English)
+    to (resolved_district, resolved_market, resolved_state).
+    Example:
+      'राठ' / 'rath' -> ('Hamirpur', 'Raath APMC', 'Uttar Pradesh')
+      'मऊरानीपुर' / 'mauranipur' -> ('Jhansi', 'Mauranipur APMC', 'Uttar Pradesh')
+      'Jhansi' / 'झांसी' -> ('Jhansi', None, 'Uttar Pradesh')
+    """
+    if not loc:
+        return "Jhansi", None, explicit_state or "Uttar Pradesh"
+
+    loc_clean = loc.strip().lower()
+    # Strip common noise words
+    loc_clean = re.sub(r"\b(mandi|मंडी|apmc|market|bazar|बाजार|जिला|jila|tehsil|तहसील)\b", "", loc_clean).strip()
+    if not loc_clean:
+        loc_clean = loc.strip().lower()
+
+    # 1. Direct match in market directory
+    if loc_clean in _MARKET_DIRECTORY:
+        entry = _MARKET_DIRECTORY[loc_clean]
+        state = explicit_state or entry.get("state") or infer_state(entry["district"])
+        return entry["district"], entry.get("market"), state
+
+    # 2. Direct match in district norm map
+    for k, v in DISTRICT_NORM_MAP.items():
+        if k.lower() == loc_clean:
+            return v, None, explicit_state or infer_state(v)
+
+    # 3. Substring / Prefix match in market directory (for length >= 3)
+    if len(loc_clean) >= 3:
+        for k, v in _MARKET_DIRECTORY.items():
+            if k == loc_clean or k.startswith(loc_clean) or loc_clean.startswith(k):
+                state = explicit_state or v.get("state") or infer_state(v["district"])
+                return v["district"], v.get("market"), state
+
+    # 4. Partial check in district norm map
+    for k, v in DISTRICT_NORM_MAP.items():
+        if k.lower() in loc_clean:
+            return v, None, explicit_state or infer_state(v)
+
+    norm_d = normalize_district(loc)
+    return norm_d, None, explicit_state or infer_state(norm_d)
+
+
 def infer_state(district: str, explicit_state: Optional[str] = None) -> str:
     """Infers official state if not explicitly specified by user or defaulted."""
     if explicit_state and explicit_state.strip().lower() not in ("", "none", "null", "uttar pradesh"):
@@ -145,8 +201,7 @@ def get_crop_price(
     If today's auction is not yet published, automatically retrieves the nearest available date.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
-    norm_dist = normalize_district(district)
-    resolved_state = infer_state(norm_dist, state)
+    resolved_dist, resolved_market, resolved_state = resolve_location(district, state)
     
     # Strict date resolution: Default to today
     resolved_date_input = date if date else "today"
@@ -161,7 +216,7 @@ def get_crop_price(
     # 1. Try live data.gov.in API for today's data (must match target district)
     if _price_service.api_key and is_today:
         try:
-            direct, _, rep_date = _price_service.fetch_live_prices(resolved_state, norm_dist, norm_crop)
+            direct, _, rep_date = _price_service.fetch_live_prices(resolved_state, resolved_dist, norm_crop, market=resolved_market)
             if direct:
                 records = direct
                 is_live = True
@@ -171,7 +226,7 @@ def get_crop_price(
 
     # 2. Historical & nearest-date database lookup
     if not records:
-        hist_records, _ = _price_service.fetch_historical(resolved_state, norm_dist, norm_crop, target_date=target_date)
+        hist_records, _ = _price_service.fetch_historical(resolved_state, resolved_dist, norm_crop, target_date=target_date, market=resolved_market)
         records = hist_records
         if records:
             reporting_date = records[0].get("arrival_date")
@@ -187,7 +242,7 @@ def get_crop_price(
         }, ensure_ascii=False)
 
     top = records[0]
-    market = clean_market_name(top.get("market", district))
+    market = clean_market_name(top.get("market", resolved_market or resolved_dist))
     variety = re.sub(r"\(.*?\)", "", top.get("variety", "सामान्य")).strip()
 
     try:
@@ -239,8 +294,8 @@ def compare_mandi_arbitrage(
     Call this when a farmer asks where to sell, asks for higher profit, or asks about nearby/other mandis.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
-    norm_dist = normalize_district(district)
-    resolved_state = infer_state(norm_dist, state)
+    resolved_dist, resolved_market, resolved_state = resolve_location(district, state)
+    norm_dist = resolved_dist
     records = []
     reporting_date = None
 
@@ -365,10 +420,10 @@ def get_crop_price_trend(
     - If they should sell now or wait.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
-    norm_dist = normalize_district(district)
-    resolved_state = infer_state(norm_dist, state)
+    resolved_dist, resolved_market, resolved_state = resolve_location(district, state)
+    norm_dist = resolved_dist
 
-    hist_records, _ = _price_service.fetch_historical(resolved_state, norm_dist, norm_crop, max_results=100)
+    hist_records, _ = _price_service.fetch_historical(resolved_state, norm_dist, norm_crop, market=resolved_market, max_results=100)
     records = list(hist_records or [])
 
     # Include live data if available

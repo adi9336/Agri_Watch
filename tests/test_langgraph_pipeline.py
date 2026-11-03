@@ -70,6 +70,15 @@ class TestAgriWatchLangGraph(unittest.TestCase):
         # Must NOT regurgitate old price; must ask for next query or prompt for other crop
         self.assertTrue(any(w in resp for w in ["अन्य", "दूसरी", "फसल", "मंडी", "मदद"]))
 
+    def test_sub_mandi_resolution_without_asking_district(self):
+        # Must resolve 'Rath' to its market & district without interrogating the farmer
+        state: AgentState = {"user_query": "राठ मंडी में गेहूं का क्या रेट है?", "session_context": {}}
+        out = self.graph.invoke(state)
+        resp = out.get("spoken_hindi_response", "")
+        self.assertEqual(out.get("intent"), "PRICE")
+        # Must quote the factual market rate for Rath (2400)
+        self.assertTrue(any(rate in resp for rate in ["2400", "2,400"]))
+
 
 if __name__ == "__main__":
     unittest.main()

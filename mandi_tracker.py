@@ -111,7 +111,8 @@ class MandiPriceService:
         self,
         state: Optional[str] = None,
         district: Optional[str] = None,
-        crop: Optional[str] = None
+        crop: Optional[str] = None,
+        market: Optional[str] = None
     ) -> Tuple[List[Dict], List[Dict], Optional[str]]:
         """Fetches today's live prices from data.gov.in."""
         if not self.api_key:
@@ -137,6 +138,13 @@ class MandiPriceService:
                             direct_matches.append(r)
             except Exception as e:
                 print(f"[!] District query notice: {e}")
+
+        # If specific market was requested, prioritize exact market matches
+        if market and direct_matches:
+            m_lower = market.lower()
+            m_matched = [r for r in direct_matches if m_lower in (r.get("market") or "").lower()]
+            if m_matched:
+                direct_matches = m_matched
 
         state_params = {"limit": "100"}
         if state:
@@ -169,21 +177,25 @@ class MandiPriceService:
         district: Optional[str] = None,
         crop: Optional[str] = None,
         target_date: Optional[str] = None,
+        market: Optional[str] = None,
         max_results: int = 25
     ) -> Tuple[List[Dict], List[str]]:
         """
         Searches historical records from local Agmarknet database.
-        Allows filtering by specific date (target_date in DD/MM/YYYY).
+        Allows filtering by specific date (target_date in DD/MM/YYYY) and optional specific market.
         """
         cache_file = self.ensure_local_cache()
         results = []
+        market_filtered_results = []
         all_dates_found = set()
+        target_market_clean = market.strip().lower() if market else ""
 
         with open(cache_file, mode="r", encoding="utf-8", errors="ignore") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 r_state = row.get("state", "").strip()
                 r_district = row.get("district", "").strip()
+                r_market = row.get("market", "").strip()
                 r_comm = row.get("commodity", "").strip()
                 r_date = row.get("arrival_date", "").strip()
 
@@ -197,11 +209,15 @@ class MandiPriceService:
                     if r_date:
                         all_dates_found.add(r_date)
 
-                    if target_date:
-                        if r_date == target_date:
-                            results.append(row)
-                    else:
+                    matches_date = not target_date or (r_date == target_date)
+                    if matches_date:
                         results.append(row)
+                        if target_market_clean and (target_market_clean in r_market.lower()):
+                            market_filtered_results.append(row)
+
+        # If specific market matches were found, prioritize them
+        if market_filtered_results:
+            results = market_filtered_results
 
         # Sort dates chronologically if any
         sorted_dates = sorted(list(all_dates_found))
@@ -215,6 +231,7 @@ class MandiPriceService:
                     for row in reader:
                         r_state = row.get("state", "").strip()
                         r_district = row.get("district", "").strip()
+                        r_market = row.get("market", "").strip()
                         r_comm = row.get("commodity", "").strip()
                         r_date = row.get("arrival_date", "").strip()
 
@@ -226,6 +243,11 @@ class MandiPriceService:
 
                         if state_match and district_match and crop_match and r_date == nearest:
                             results.append(row)
+                            if target_market_clean and (target_market_clean in r_market.lower()):
+                                market_filtered_results.append(row)
+
+                if market_filtered_results:
+                    results = market_filtered_results
 
         return results[:max_results], sorted_dates
 
