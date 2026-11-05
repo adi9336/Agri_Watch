@@ -16,7 +16,15 @@ Agri_watch decouples real-time audio streaming from cognitive deliberative reaso
 
 ```mermaid
 flowchart TD
-    Farmer([👨‍🌾 Indian Farmer / Trader]) <-->|Spoken Hindi Voice| LK[LiveKit Cloud WebRTC Server]
+    Farmer([👨‍🌾 Indian Farmer / Web User]) <-->|Spoken Voice / WebRTC| LK[LiveKit Cloud WebRTC Server]
+    Farmer <-->|Modern Web Browser| WebUI[⚛️ React 19 SPA Frontend\nTailwind CSS, Glassmorphism, Dual Voice/Chat]
+
+    subgraph BackendApp["⚡ Unified FastAPI Application (:8000)"]
+        WebUI <-->|REST API / Static SPA| FAPI[FastAPI Server]
+        FAPI --> TokenGen[WebRTC JWT Token Dispatcher]
+        FAPI --> DirectAPI[APMC Price, Arbitrage, MSP APIs]
+        FAPI --> LangGraphChat[Cognitive Chat Endpoint]
+    end
 
     subgraph AudioEngine["🎙️ Real-Time Voice Environment (LiveKit Worker)"]
         LK <--> VAD[Silero VAD\n<100ms Barge-In Interruption]
@@ -26,6 +34,7 @@ flowchart TD
 
     STT -->|Transcribed Utterance| LLMAdapter[LangGraph LLM Adapter]
     LLMAdapter -->|Spoken Response| TTS
+    LangGraphChat --> LangGraph
 
     subgraph LangGraph["🧠 3-Node Cognitive Multi-Agent Harness"]
         direction TB
@@ -128,8 +137,49 @@ LANGSMITH_PROJECT=agriwatch
 
 ## 🚀 Running Agri_watch
 
-### Mode 1: Live WebRTC Voice Worker (Recommended)
-Connects to your LiveKit Cloud room and listens for real-time voice:
+### Mode 0: Unified Web UI & FastAPI Server (Recommended for Web Users)
+Agri_watch comes with a modern React 19 single-page application and FastAPI backend.
+
+**One-Click Launch:**
+- **On Windows:**
+  ```powershell
+  .\run_local.bat
+  ```
+- **On Linux / macOS:**
+  ```bash
+  chmod +x run_local.sh
+  ./run_local.sh
+  ```
+
+Or manually:
+```bash
+# 1. Build the React frontend SPA
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 2. Launch FastAPI (serves both REST APIs and frontend assets)
+python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
+```
+Open your browser at **[http://localhost:8000](http://localhost:8000)** to access:
+- 🎙️ **Live WebRTC Voice Orb**: Connect directly via browser microphone with Silero VAD barge-in.
+- 💬 **Factual Chat Interface**: Hindi conversational chat with instant Agmarknet price cards and suggestion chips.
+- 📖 **Interactive Swagger API Docs**: At `http://localhost:8000/docs`.
+
+---
+
+### Mode 1: Docker & Cloud Deployment
+Launch both the FastAPI web server and the LiveKit voice worker in isolated containers:
+```bash
+docker compose up --build
+```
+This automatically builds the frontend in a multi-stage Docker build, installs all Python dependencies, and starts both services with automatic restarts and healthchecks.
+
+---
+
+### Mode 2: Live WebRTC Voice Worker (Standalone CLI)
+Connects directly to your LiveKit Cloud room and listens for real-time voice:
 ```bash
 python voice_engine/livekit_worker.py dev
 ```
@@ -138,13 +188,13 @@ python voice_engine/livekit_worker.py dev
 2. Navigate to **Agents** $\rightarrow$ **Playground**.
 3. Select your agent (`agri_watch`), click **Connect**, and start speaking in Hindi!
 
-### Mode 2: Interactive Terminal Console (No Microphone Required)
+### Mode 3: Interactive Terminal Console (No Microphone Required)
 Test multi-turn text conversations and tool executions without starting LiveKit:
 ```bash
 python voice_engine/interactive_console.py
 ```
 
-### Mode 3: Direct Mandi Price Discovery CLI
+### Mode 4: Direct Mandi Price Discovery CLI
 Quickly test Agmarknet data retrieval for any crop and mandi:
 ```bash
 python mandi_tracker.py --crop "चना" --district "कटनी" --date "पिछले हफ्ते"
@@ -154,9 +204,13 @@ python mandi_tracker.py --crop "चना" --district "कटनी" --date "प
 
 ## 🧪 Running Automated Tests
 
-Run the full end-to-end LangGraph unit test suite:
+Run both the LangGraph multi-agent tests and the FastAPI/SPA integration suite:
 ```bash
+# 1. Multi-Agent Cognitive Tests
 python -m unittest tests/test_langgraph_pipeline.py
+
+# 2. FastAPI & Web SPA Integration Tests
+python -m unittest tests/test_backend_api.py
 ```
 
 All 6 integration tests will verify:
@@ -182,6 +236,17 @@ All 6 integration tests will verify:
 
 ```text
 Agri_watch/
+├── backend/                    # Unified FastAPI Application
+│   ├── __init__.py
+│   └── app.py                  # WebRTC token, chat, prices, & SPA serving
+├── frontend/                   # Modern React 19 + Tailwind CSS Frontend
+│   ├── src/
+│   │   ├── App.jsx             # Dual-mode Voice Orb & Factual Chat interface
+│   │   ├── useLiveKitVoice.js  # LiveKit WebRTC hook with track subscription
+│   │   ├── index.css           # Glassmorphism & pulsing waveform animations
+│   │   └── main.jsx
+│   ├── package.json
+│   └── vite.config.js
 ├── agents/                     # LangGraph Multi-Agent Cognitive Harness
 │   ├── fallback.py             # Sovereign offline fallback node
 │   ├── graph.py                # StateGraph orchestration & conditional edges
@@ -192,15 +257,21 @@ Agri_watch/
 │   ├── state.py                # AgentState TypedDict schema
 │   └── tools.py                # LangChain market intelligence tool suite
 ├── data/
-│   ├── mandi_prices_snapshot.csv # 50MB APMC Agmarknet snapshot (auto-downloaded)
+│   ├── mandi_prices_snapshot.csv # APMC Agmarknet snapshot
+│   ├── market_directory.json   # 2,500+ APMC Mandi lookup directory
 │   └── msp_benchmarks.json     # Official CACP MSP floor price benchmarks
 ├── tests/
-│   └── test_langgraph_pipeline.py # Comprehensive integration unit tests
+│   ├── test_langgraph_pipeline.py # Comprehensive multi-agent unit tests
+│   └── test_backend_api.py     # FastAPI endpoints & SPA delivery tests
 ├── voice_engine/               # LiveKit Supporting Audio Environment
 │   ├── interactive_console.py  # Text-based interactive testing harness
 │   ├── livekit_worker.py       # LiveKit WebRTC worker with Silero VAD & Gnani
 │   ├── gnani_speech.py         # Gnani STT and TTS client definitions
 │   └── generate_token.py       # LiveKit room access token generator
+├── Dockerfile                  # Multi-stage production container build
+├── docker-compose.yml          # Unified Web + Worker container orchestration
+├── run_local.bat               # Windows one-click launcher
+├── run_local.sh                # Linux/macOS launcher
 ├── mandi_tracker.py            # APMC Agmarknet data retrieval & date resolver
 ├── requirements.txt            # Python dependencies
 ├── .env.example                # Configuration template
