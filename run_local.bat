@@ -29,3 +29,4 @@ start "Agri_watch Voice Worker" cmd /k "chcp 65001 >nul && .venv\Scripts\python.
 
 echo [✓] Both services launched!
 echo [✓] Open your browser at: http://localhost:8000
+

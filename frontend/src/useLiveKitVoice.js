@@ -5,6 +5,7 @@ export function useLiveKitVoice() {
   const [status, setStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'connected' | 'error'
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [volume, setVolume] = useState(0.0);
   const [error, setError] = useState(null);
   
   const roomRef = useRef(null);
@@ -66,12 +67,23 @@ export function useLiveKitVoice() {
         }
       });
 
-      // 4. Track Active Speakers (Visualizer states)
+      // 4. Track Active Speakers (Visualizer states & Volume for 3D AIBlob)
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-        const localSpeaking = speakers.some((s) => s.isLocal);
-        const agentSpeaking = speakers.some((s) => !s.isLocal);
+        const localSpeaker = speakers.find((s) => s.isLocal);
+        const agentSpeaker = speakers.find((s) => !s.isLocal);
+        const localSpeaking = Boolean(localSpeaker);
+        const agentSpeaking = Boolean(agentSpeaker);
+
         setIsUserSpeaking(localSpeaking);
         setIsAgentSpeaking(agentSpeaking);
+
+        if (agentSpeaking) {
+          setVolume(Math.max(agentSpeaker.audioLevel || 0.65, 0.4));
+        } else if (localSpeaking) {
+          setVolume(Math.max(localSpeaker.audioLevel || 0.5, 0.3));
+        } else {
+          setVolume(0.0);
+        }
       });
 
       room.on(RoomEvent.Disconnected, () => {
@@ -79,6 +91,7 @@ export function useLiveKitVoice() {
         setStatus('disconnected');
         setIsAgentSpeaking(false);
         setIsUserSpeaking(false);
+        setVolume(0.0);
       });
 
       // 5. Connect to LiveKit Cloud Room
@@ -109,15 +122,18 @@ export function useLiveKitVoice() {
     setStatus('disconnected');
     setIsAgentSpeaking(false);
     setIsUserSpeaking(false);
+    setVolume(0.0);
   }, []);
 
   return {
     status,
     isAgentSpeaking,
     isUserSpeaking,
+    volume,
     error,
     connect,
     disconnect,
     room: roomRef.current,
   };
 }
+

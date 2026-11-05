@@ -28,3 +28,4 @@ trap "kill $FASTAPI_PID $WORKER_PID" EXIT INT TERM
 
 echo "[✓] Both services running. Visit http://localhost:8000"
 wait
+

@@ -18,12 +18,14 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useLiveKitVoice } from './useLiveKitVoice';
+import AIBlob from './components/AIBlob';
 
 export default function App() {
-  const { status, isAgentSpeaking, isUserSpeaking, error: voiceError, connect, disconnect } = useLiveKitVoice();
+  const { status, isAgentSpeaking, isUserSpeaking, volume, error: voiceError, connect, disconnect } = useLiveKitVoice();
 
   const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'chat'
   const [inputText, setInputText] = useState('');
+  const [blobStatePreview, setBlobStatePreview] = useState(null); // null = auto from WebRTC/AI
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -35,6 +37,19 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [metadata, setMetadata] = useState(null);
   const [lastResult, setLastResult] = useState(null);
+
+  // Derive 3D AI Blob state (idle | listening | thinking | speaking)
+  const activeBlobState = blobStatePreview || (
+    status === 'connecting' || isTyping
+      ? 'thinking'
+      : status === 'connected'
+        ? isAgentSpeaking
+          ? 'speaking'
+          : isUserSpeaking
+            ? 'listening'
+            : 'listening'
+        : 'idle'
+  );
 
   const chatEndRef = useRef(null);
 
@@ -217,63 +232,75 @@ export default function App() {
           </button>
         </div>
 
-        {/* VOICE MODE PANEL */}
+        {/* VOICE MODE PANEL WITH 3D AI BLOB */}
         {activeTab === 'voice' && (
-          <div className="flex flex-col items-center justify-center py-6 sm:py-10 glass-panel p-6 sm:p-8 text-center relative overflow-hidden">
+          <div className="flex flex-col items-center justify-center py-6 sm:py-8 glass-panel p-6 sm:p-8 text-center relative overflow-hidden">
             {/* Ambient background glows */}
-            <div className="absolute -top-20 -left-20 w-64 h-64 bg-green-600/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-24 -left-24 w-72 h-72 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
 
-            {/* Giant Animated Voice Orb */}
-            <div className="relative my-4 sm:my-6 flex items-center justify-center">
-              <button
-                onClick={handleVoiceToggle}
-                className={`w-40 h-40 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center text-white transition-all cursor-pointer relative z-10 ${
-                  status === 'connected'
-                    ? isAgentSpeaking
-                      ? 'orb-speaking'
-                      : isUserSpeaking
-                      ? 'orb-listening'
-                      : 'orb-listening'
-                    : status === 'connecting'
-                    ? 'orb-connecting'
-                    : 'orb-idle hover:scale-105'
-                }`}
-              >
-                {status === 'connected' ? (
-                  isAgentSpeaking ? (
-                    <>
-                      <Volume2 size={44} className="mb-2 animate-bounce" />
-                      <span className="text-xs font-bold tracking-wider uppercase">एजेंट बोल रहा है</span>
-                      <span className="text-[10px] text-amber-200 mt-1">(रोकने के लिए बोलें)</span>
-                    </>
-                  ) : isUserSpeaking ? (
-                    <>
-                      <Mic size={44} className="mb-2 text-white animate-pulse" />
-                      <span className="text-xs font-bold tracking-wider uppercase">सुन रहा हूँ...</span>
-                      <span className="text-[10px] text-green-200 mt-1">आप बोल रहे हैं</span>
-                    </>
-                  ) : (
-                    <>
-                      <Mic size={44} className="mb-2 text-white" />
-                      <span className="text-xs font-bold tracking-wider uppercase">माइक ऑन है</span>
-                      <span className="text-[10px] text-green-200 mt-1">पूछिए (जैसे चना या गेहूं)</span>
-                    </>
-                  )
-                ) : status === 'connecting' ? (
-                  <>
-                    <RefreshCw size={40} className="mb-2 animate-spin text-sky-200" />
-                    <span className="text-xs font-bold">जुड़ रहा है...</span>
-                  </>
-                ) : (
-                  <>
-                    <Mic size={44} className="mb-2 text-green-300" />
-                    <span className="text-xs font-bold tracking-wide">माइक दबाएं</span>
-                    <span className="text-[10px] text-gray-300 mt-1">बोलकर भाव जानें</span>
-                  </>
-                )}
-              </button>
+            {/* AI Blob State Pill */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900/90 border border-gray-700/70 text-xs shadow-md mb-2">
+              <span className={`w-2 h-2 rounded-full ${
+                activeBlobState === 'speaking'
+                  ? 'bg-amber-400 animate-ping'
+                  : activeBlobState === 'listening'
+                  ? 'bg-emerald-400 animate-pulse'
+                  : activeBlobState === 'thinking'
+                  ? 'bg-cyan-400 animate-spin'
+                  : 'bg-gray-400'
+              }`} />
+              <span className="text-gray-300 font-medium">
+                {activeBlobState === 'speaking' && '✨ AI Blob: Speaking (एजेंट बोल रहा है)'}
+                {activeBlobState === 'listening' && '🎙️ AI Blob: Listening (सुन रहा हूँ...)'}
+                {activeBlobState === 'thinking' && '🧠 AI Blob: Thinking (सोच रहा हूँ...)'}
+                {activeBlobState === 'idle' && '💎 AI Blob: Idle (स्टैंडबाय)'}
+              </span>
             </div>
+
+            {/* 3D AI Glass Orb / Blob Container */}
+            <div className="relative my-2 flex items-center justify-center">
+              <AIBlob
+                state={activeBlobState}
+                volume={volume}
+                size={300}
+                interactive={true}
+                onClick={handleVoiceToggle}
+                className="drop-shadow-[0_0_35px_rgba(16,185,129,0.35)]"
+                colors={{
+                  core: '#f59e0b',
+                  body: '#10b981',
+                  rim: '#06b6d4',
+                  active: '#22c55e'
+                }}
+              />
+
+              {/* Click-to-call Center Helper (when idle or disconnected) */}
+              {status === 'disconnected' && (
+                <div
+                  onClick={handleVoiceToggle}
+                  className="absolute pointer-events-none px-3 py-1 rounded-full bg-gray-950/80 border border-gray-700/60 backdrop-blur-sm text-[11px] text-gray-300 shadow-lg tracking-wide animate-pulse"
+                >
+                  टैप करके कॉल करें
+                </div>
+              )}
+            </div>
+
+            {/* Live Volume Audio Wave Bar (When speaking or listening) */}
+            {(isAgentSpeaking || isUserSpeaking) && (
+              <div className="flex items-center gap-1.5 my-2">
+                {[40, 75, 100, 60, 85, 45, 90, 65, 30].map((h, i) => (
+                  <div
+                    key={i}
+                    className="w-1 bg-gradient-to-t from-emerald-500 to-amber-400 rounded-full transition-all duration-100"
+                    style={{
+                      height: `${Math.max(6, Math.min(28, (volume + 0.2) * (h / 3)))}px`,
+                      animationDelay: `${i * 60}ms`
+                    }}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Voice Status Explanation */}
             <div className="max-w-md mx-auto mt-2">
@@ -281,14 +308,40 @@ export default function App() {
                 {status === 'connected'
                   ? isAgentSpeaking
                     ? '🌾 एग्री-वॉच जवाब दे रहा है'
-                    : '🎙️ अपनी भाषा (हिंदी) में निसंकोच बोलें'
-                  : 'टैप करके सीधे आवाज़ में भाव पूछें'}
+                    : isUserSpeaking
+                    ? '🎙️ आप बोल रहे हैं (सुन रहा हूँ)'
+                    : '🎙️ अपनी भाषा (हिंदी) में निसंकोच पूछें'
+                  : 'AI Blob 3D ग्लास ऑर्ब से सीधे बोलें'}
               </h2>
               <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                 {status === 'connected'
                   ? 'सटीक 120ms बार्ज-इन: यदि आप बीच में टोकना चाहें, तो सीधे बोलना शुरू करें - एजेंट तुरंत रुक जाएगा।'
-                  : 'WebRTC लाइव ऑडियो से जुड़ें: देश भर की 2,800+ APMC मंडियों के ताज़ा भाव, न्यूनतम समर्थन मूल्य और मुनाफा तुलना।'}
+                  : 'थ्री.जेएस और सिम्प्लेक्स नॉइज़ 3D शेडर: आपके बोलने, सोचने और एजेंट के जवाब के साथ ऑर्ब लाइव रिएक्ट करता है।'}
               </p>
+            </div>
+
+            {/* Interactive State Demo Switcher */}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5 bg-gray-900/60 p-1.5 rounded-xl border border-gray-800 text-[11px]">
+              <span className="text-gray-500 px-2 font-medium">Shader State:</span>
+              {[
+                { label: 'Auto (Live)', value: null },
+                { label: 'Idle', value: 'idle' },
+                { label: 'Listening', value: 'listening' },
+                { label: 'Thinking', value: 'thinking' },
+                { label: 'Speaking', value: 'speaking' },
+              ].map((btn) => (
+                <button
+                  key={btn.label}
+                  onClick={() => setBlobStatePreview(btn.value)}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    blobStatePreview === btn.value
+                      ? 'bg-emerald-600 text-white font-semibold shadow-sm'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
             </div>
 
             {voiceError && (
