@@ -37,6 +37,73 @@ def load_env() -> Dict[str, str]:
     return env_vars
 
 
+def is_commodity_match(target: Optional[str], candidate: Optional[str]) -> bool:
+    """
+    Intelligently matches crop synonyms against Agmarknet commodity strings.
+    Handles Indic pulse variations (Chana vs Moong/Arhar/Urad) and common cereals/oilseeds.
+    """
+    if not target:
+        return True
+    if not candidate:
+        return False
+    t = target.lower().strip()
+    c = candidate.lower().strip()
+
+    # Direct substring match
+    if t in c or c in t:
+        if any(g in t for g in ["chana", "gram", "चने", "चना", "bengal gram"]):
+            if any(p in c for p in ["green", "red", "black", "horse", "alasande"]):
+                return False
+        return True
+
+    # Chana / Chickpea family -> Gram Raw(Chholia), Bengal Gram, Kabuli Chana, Big Gram
+    if any(g in t for g in ["chana", "gram", "चने", "चना", "bengal gram", "chickpea", "chane"]):
+        if ("gram" in c or "chana" in c) and not any(p in c for p in ["green", "red", "black", "horse", "alasande"]):
+            return True
+
+    # Arhar / Tur family
+    if any(g in t for g in ["arhar", "tur", "tuar", "अरहर", "तुअर", "red gram"]):
+        if "arhar" in c or "tur" in c or "red gram" in c:
+            return True
+
+    # Moong family
+    if any(g in t for g in ["moong", "mung", "मूंग", "मूँग", "green gram"]):
+        if "moong" in c or "green gram" in c:
+            return True
+
+    # Urad family
+    if any(g in t for g in ["urad", "urd", "उड़द", "black gram"]):
+        if "urd" in c or "urad" in c or "black gram" in c:
+            return True
+
+    # Sarson / Mustard family
+    if any(g in t for g in ["sarson", "mustard", "rai", "सरसों", "राई", "colza"]):
+        if "mustard" in c or "sarson" in c or "colza" in c or "rai" in c:
+            return True
+
+    # Matar / Peas
+    if any(g in t for g in ["matar", "pea", "peas", "मटर"]):
+        if "pea" in c or "matar" in c:
+            return True
+
+    # Masur / Lentil
+    if any(g in t for g in ["masur", "lentil", "मसूर"]):
+        if "masur" in c or "lentil" in c:
+            return True
+
+    # Dhan / Paddy
+    if any(g in t for g in ["dhan", "paddy", "chawal", "rice", "धान"]):
+        if "paddy" in c or "rice" in c:
+            return True
+
+    # Wheat / Gehu
+    if any(g in t for g in ["wheat", "gehu", "gehun", "गेहूँ", "गेहू"]):
+        if "wheat" in c:
+            return True
+
+    return False
+
+
 def normalize_date(date_str: Optional[str]) -> Optional[str]:
     """Normalize input date string to DD/MM/YYYY format used by Agmarknet."""
     if not date_str:
@@ -134,7 +201,7 @@ class MandiPriceService:
                     reporting_date = dist_records[0].get("arrival_date")
                     for r in dist_records:
                         comm = r.get("commodity", "")
-                        if not crop or crop_lower in comm.lower():
+                        if not crop or is_commodity_match(crop, comm):
                             direct_matches.append(r)
             except Exception as e:
                 print(f"[!] District query notice: {e}")
@@ -158,7 +225,7 @@ class MandiPriceService:
             for r in state_records:
                 r_dist = r.get("district", "")
                 r_comm = r.get("commodity", "")
-                matches_crop = not crop or (crop_lower in r_comm.lower())
+                matches_crop = not crop or is_commodity_match(crop, r_comm)
                 matches_dist = not district or (district.lower() in r_dist.lower())
 
                 if matches_crop and matches_dist and not direct_matches:
@@ -183,10 +250,12 @@ class MandiPriceService:
         """
         Searches historical records from local Agmarknet database.
         Allows filtering by specific date (target_date in DD/MM/YYYY) and optional specific market.
+        Intelligently prioritizes market-specific dates and fuzzy commodity naming.
         """
         cache_file = self.ensure_local_cache()
         results = []
         market_filtered_results = []
+        market_dates_found = set()
         all_dates_found = set()
         target_market_clean = market.strip().lower() if market else ""
 
@@ -203,11 +272,13 @@ class MandiPriceService:
                 target_dist_clean = district.strip().lower() if district else ""
                 state_match = not state or (state.lower() in r_state.lower())
                 district_match = not district or (r_dist_clean == target_dist_clean) or (target_dist_clean in r_dist_clean.split())
-                crop_match = not crop or (crop.lower() in r_comm.lower())
+                crop_match = not crop or is_commodity_match(crop, r_comm)
 
                 if state_match and district_match and crop_match:
                     if r_date:
                         all_dates_found.add(r_date)
+                        if target_market_clean and (target_market_clean in r_market.lower()):
+                            market_dates_found.add(r_date)
 
                     matches_date = not target_date or (r_date == target_date)
                     if matches_date:
@@ -215,17 +286,30 @@ class MandiPriceService:
                         if target_market_clean and (target_market_clean in r_market.lower()):
                             market_filtered_results.append(row)
 
-        # If specific market matches were found, prioritize them
+        # If specific market matches were found on target_date, prioritize them
         if market_filtered_results:
             results = market_filtered_results
 
-        # Sort dates chronologically if any
-        sorted_dates = sorted(list(all_dates_found))
+        # Helper to parse dates chronologically
+        def _parse_d(d_str: str) -> datetime:
+            for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    return datetime.strptime(d_str.strip(), fmt)
+                except Exception:
+                    pass
+            return datetime.min
 
-        # If specific date was requested but had no records, fallback to the nearest available date
-        if target_date and not results and sorted_dates:
-            nearest = find_nearest_date(target_date, sorted_dates)
+        # Sort dates chronologically
+        sorted_dates = sorted(list(all_dates_found), key=_parse_d)
+
+        # If specific date had no records, or specific market had no records on target date,
+        # fallback to the nearest available reporting date (preferring the target market's own dates)
+        dates_for_fallback = market_dates_found if (target_market_clean and market_dates_found) else all_dates_found
+        if target_date and (not results or (target_market_clean and not market_filtered_results)) and dates_for_fallback:
+            nearest = find_nearest_date(target_date, list(dates_for_fallback))
             if nearest:
+                fallback_results = []
+                fallback_market_results = []
                 with open(cache_file, mode="r", encoding="utf-8", errors="ignore") as f:
                     reader = csv.DictReader(f)
                     for row in reader:
@@ -239,15 +323,19 @@ class MandiPriceService:
                         target_dist_clean = district.strip().lower() if district else ""
                         state_match = not state or (state.lower() in r_state.lower())
                         district_match = not district or (r_dist_clean == target_dist_clean) or (target_dist_clean in r_dist_clean.split())
-                        crop_match = not crop or (crop.lower() in r_comm.lower())
+                        crop_match = not crop or is_commodity_match(crop, r_comm)
 
                         if state_match and district_match and crop_match and r_date == nearest:
-                            results.append(row)
+                            fallback_results.append(row)
                             if target_market_clean and (target_market_clean in r_market.lower()):
-                                market_filtered_results.append(row)
+                                fallback_market_results.append(row)
 
-                if market_filtered_results:
-                    results = market_filtered_results
+                if fallback_market_results:
+                    results = fallback_market_results
+                elif fallback_results:
+                    results = fallback_results
+
+        return results[:max_results], sorted_dates
 
         return results[:max_results], sorted_dates
 

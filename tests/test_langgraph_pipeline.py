@@ -79,6 +79,24 @@ class TestAgriWatchLangGraph(unittest.TestCase):
         # Must quote the factual market rate for Rath (2400)
         self.assertTrue(any(rate in resp for rate in ["2400", "2,400"]))
 
+    def test_nearby_mandis_cluster_breakdown(self):
+        # Turn 1: Rath Chana inquiry
+        t1 = self.graph.invoke({"user_query": "राठ मंडी में चने का भाव बताओ", "session_context": {}})
+        r1 = t1.get("spoken_hindi_response", "")
+        self.assertTrue(any(rate in r1 for rate in ["6100", "6,100"]))
+
+        # Turn 2: Nearby mandis follow-up with phonetic 'रॉड' STT transcription
+        t2 = self.graph.invoke({
+            "user_query": "क्या तुम मुझे सारी मंडियों के दाम बताओगे जितनी भी रॉड के आसपास हैं उसका दाम",
+            "session_context": t1.get("session_context", {})
+        })
+        r2 = t2.get("spoken_hindi_response", "")
+        self.assertEqual(t2.get("intent"), "ARBITRAGE")
+        # Must name top nearby mandis and actual rates, NOT give canned 'भाव समान है' dismissal
+        self.assertTrue(any(m in r2 for m in ["महोबा", "अतर्रा", "मऊरानीपुर", "राठ"]))
+        self.assertTrue(any(rate in r2 for rate in ["6400", "6,400", "6200", "6,200", "6100", "6,100"]))
+        self.assertNotIn("कोई विशेष उच्च दाम वाली मंडी नहीं मिली", r2)
+
 
 if __name__ == "__main__":
     unittest.main()

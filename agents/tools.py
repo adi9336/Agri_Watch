@@ -18,7 +18,7 @@ PARENT_DIR = os.path.dirname(CURRENT_DIR)
 if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
-from mandi_tracker import MandiPriceService, normalize_date
+from mandi_tracker import MandiPriceService, normalize_date, is_commodity_match
 from agents.observability import traceable
 
 MSP_FILE = os.path.join(PARENT_DIR, "data", "msp_benchmarks.json")
@@ -29,7 +29,7 @@ CROP_NORM_MAP = {
     "gehu": "Wheat", "gehun": "Wheat", "गेहूँ": "Wheat", "गेहू": "Wheat", "wheat": "Wheat",
     "dhan": "Paddy", "धान": "Paddy", "chawal": "Paddy", "paddy": "Paddy",
     "sarson": "Mustard", "सरसों": "Mustard", "mustard": "Mustard", "rai": "Mustard",
-    "chana": "Bengal Gram", "chane": "Bengal Gram", "चने": "Bengal Gram", "चना": "Bengal Gram", "gram": "Bengal Gram", "chickpea": "Bengal Gram",
+    "chana": "Gram", "chane": "Gram", "चने": "Gram", "चना": "Gram", "gram": "Gram", "chickpea": "Gram",
     "arhar": "Red gram", "तुअर": "Red gram", "अरहर": "Red gram",
     "moong": "Green Gram", "मूँग": "Green Gram", "मूंग": "Green Gram",
     "matar": "Peas(Dry)", "मटर": "Peas(Dry)",
@@ -64,7 +64,10 @@ DISTRICT_NORM_MAP = {
     "अलीगढ़": "Aligarh", "aligarh": "Aligarh",
     "राजकोट": "Rajkot", "rajkot": "Rajkot",
     "करनाल": "Karnal", "karnal": "Karnal",
-    "लुधियाना": "Ludhiana", "ludhiana": "Ludhiana"
+    "लुधियाना": "Ludhiana", "ludhiana": "Ludhiana",
+    "थाने": "Thane", "ठाणे": "Thane", "thane": "Thane",
+    "कल्याण": "Kalyan", "kalyan": "Kalyan",
+    "पालघर": "Palghar", "palghar": "Palghar"
 }
 
 # Automatic State Association to prevent wrong-state fallback lookups
@@ -78,7 +81,8 @@ DISTRICT_STATE_MAP = {
     "Sambhal": "Uttar Pradesh", "Badaun": "Uttar Pradesh", "Etawah": "Uttar Pradesh",
     "Lalitpur": "Uttar Pradesh", "Kanpur": "Uttar Pradesh", "Lucknow": "Uttar Pradesh",
     "Varanasi": "Uttar Pradesh", "Barabanki": "Uttar Pradesh",
-    "Kota": "Rajasthan", "Rajkot": "Gujarat", "Karnal": "Haryana", "Ludhiana": "Punjab"
+    "Kota": "Rajasthan", "Rajkot": "Gujarat", "Karnal": "Haryana", "Ludhiana": "Punjab",
+    "Thane": "Maharashtra", "Kalyan": "Maharashtra", "Palghar": "Maharashtra", "Mumbai": "Maharashtra", "Pune": "Maharashtra"
 }
 
 
@@ -92,6 +96,83 @@ if os.path.exists(MARKET_DIR_PATH):
     except Exception:
         pass
 
+# Ensure critical markets are accurately mapped to their official APMC district and state
+_MARKET_DIRECTORY.update({
+    "kalyan": {"market": "APMC Kalyan", "district": "Thane", "state": "Maharashtra"},
+    "thane": {"market": "APMC Kalyan", "district": "Thane", "state": "Maharashtra"},
+    "थाने": {"market": "APMC Kalyan", "district": "Thane", "state": "Maharashtra"},
+    "ठाणे": {"market": "APMC Kalyan", "district": "Thane", "state": "Maharashtra"},
+    "कल्याण": {"market": "APMC Kalyan", "district": "Thane", "state": "Maharashtra"},
+    "थाने कल्याण": {"market": "APMC Kalyan", "district": "Thane", "state": "Maharashtra"},
+    "ठाणे कल्याण": {"market": "APMC Kalyan", "district": "Thane", "state": "Maharashtra"}
+})
+
+
+STT_PHONETIC_VARIANTS = {
+    "रॉड": "rath", "राड": "rath", "राट": "rath", "रठ": "rath", "rod": "rath", "raad": "rath", "raat": "rath",
+    "मौ": "mauranipur", "उरई": "orai", "अतर्रा": "atarra", "बरुआसागर": "barwasagar",
+    "झाँसी": "jhansi", "झांसी": "jhansi", "महोबा": "mahoba", "बाँदा": "banda", "बांदा": "banda", "हमीरपुर": "hamirpur"
+}
+
+NEIGHBORING_DISTRICTS = {
+    # Bundelkhand / Central UP & MP
+    "Hamirpur": ["Mahoba", "Jhansi", "Banda", "Jalaun", "Kanpur Dehat", "Fatehpur"],
+    "Mahoba": ["Hamirpur", "Jhansi", "Banda", "Chhatarpur"],
+    "Jhansi": ["Hamirpur", "Mahoba", "Jalaun", "Lalitpur", "Tikamgarh", "Datia", "Shivpuri"],
+    "Banda": ["Hamirpur", "Mahoba", "Chitrakoot", "Fatehpur"],
+    "Jalaun": ["Hamirpur", "Jhansi", "Kanpur Dehat", "Auraiya", "Bhind"],
+    "Lalitpur": ["Jhansi", "Tikamgarh", "Sagar", "Guna", "Ashoknagar"],
+    "Chitrakoot": ["Banda", "Satna", "Prayagraj", "Kaushambi"],
+    "Prayagraj": ["Kaushambi", "Pratapgarh", "Mirzapur", "Bhadohi", "Chitrakoot", "Rewa"],
+    
+    # MP Key Hubs
+    "Damoh": ["Sagar", "Katni", "Panna", "Jabalpur", "Narsinghpur"],
+    "Sagar": ["Damoh", "Vidisha", "Lalitpur", "Tikamgarh", "Raisen", "Narsinghpur"],
+    "Katni": ["Damoh", "Jabalpur", "Satna", "Panna", "Umaria"],
+    "Jabalpur": ["Katni", "Damoh", "Narsinghpur", "Seoni", "Mandla"],
+    "Satna": ["Panna", "Rewa", "Katni", "Banda", "Chitrakoot"],
+    "Rewa": ["Satna", "Sidhi", "Prayagraj"],
+    "Vidisha": ["Sagar", "Bhopal", "Raisen", "Guna", "Ashoknagar"],
+    "Bhopal": ["Sehore", "Raisen", "Rajgarh", "Vidisha"],
+    "Sehore": ["Bhopal", "Raisen", "Hoshangabad", "Dewas", "Shajapur"],
+    "Indore": ["Ujjain", "Dewas", "Dhar", "Khargone"],
+    "Ujjain": ["Indore", "Dewas", "Dhar", "Ratlam", "Shajapur", "Agar Malwa"],
+    
+    # Western UP / Braj
+    "Agra": ["Mathura", "Firozabad", "Etah", "Hathras", "Bharatpur", "Dholpur"],
+    "Mathura": ["Agra", "Hathras", "Aligarh", "Palwal", "Bharatpur"],
+    "Aligarh": ["Mathura", "Hathras", "Bulandshahr", "Kasganj", "Sambhal", "Badaun"],
+    "Etah": ["Kasganj", "Mainpuri", "Firozabad", "Agra", "Aligarh"],
+    "Etawah": ["Mainpuri", "Auraiya", "Jalaun", "Bhind", "Agra"],
+    
+    # Haryana / Punjab / Rajasthan
+    "Karnal": ["Kurukshetra", "Panipat", "Kaithal", "Yamunanagar"],
+    "Ludhiana": ["Jalandhar", "Moga", "Barnala", "Fatehgarh Sahib", "Rupnagar"],
+    "Kota": ["Bundi", "Baran", "Jhalawar"],
+    "Rajkot": ["Morbi", "Jamnagar", "Junagadh", "Amreli", "Surendranagar"]
+}
+
+MARKET_HI_MAP = {
+    "Raath": "राठ मंडी",
+    "Mahoba": "महोबा मंडी",
+    "Mauranipur": "मऊरानीपुर मंडी",
+    "Maudaha": "मौदहा मंडी",
+    "Muskara": "मुस्करा मंडी",
+    "Jhansi": "झाँसी मंडी",
+    "Banda": "बाँदा मंडी",
+    "Atarra": "अतर्रा मंडी",
+    "Charkhari": "चरखारी मंडी",
+    "Bharuasumerpur": "भरुआ सुमेरपुर मंडी",
+    "Moth": "मोठ मंडी",
+    "Gurusarai": "गुरसराय मंडी",
+    "Orai": "उरई मंडी",
+    "Damoh": "दमोह मंडी",
+    "Satna": "सतना मंडी",
+    "Katni": "कटनी मंडी",
+    "Sagar": "सागर मंडी",
+    "Jabalpur": "जबलपुर मंडी",
+    "Vidisha": "विदिशा मंडी"
+}
 
 def resolve_location(loc: str, explicit_state: Optional[str] = None) -> tuple:
     """
@@ -106,10 +187,16 @@ def resolve_location(loc: str, explicit_state: Optional[str] = None) -> tuple:
         return "Jhansi", None, explicit_state or "Uttar Pradesh"
 
     loc_clean = loc.strip().lower()
-    # Strip common noise words
-    loc_clean = re.sub(r"\b(mandi|मंडी|apmc|market|bazar|बाजार|जिला|jila|tehsil|तहसील)\b", "", loc_clean).strip()
+    # Strip common noise words and proximity phrases
+    loc_clean = re.sub(r"\b(mandi|मंडी|apmc|market|bazar|बाजार|जिला|jila|tehsil|तहसील|के आसपास|आसपास|के पास|पास की|के नजदीक|आस पास)\b", "", loc_clean).strip()
+    loc_clean = re.sub(r"^(के|की|में|से)\s+", "", loc_clean).strip()
+    loc_clean = re.sub(r"\s+(के|की|में|से)$", "", loc_clean).strip()
     if not loc_clean:
         loc_clean = loc.strip().lower()
+
+    # Phonetic alias mapping for Indian STT transcriptions (e.g. रॉड -> rath)
+    if loc_clean in STT_PHONETIC_VARIANTS:
+        loc_clean = STT_PHONETIC_VARIANTS[loc_clean]
 
     # 1. Direct match in market directory
     if loc_clean in _MARKET_DIRECTORY:
@@ -289,77 +376,174 @@ def compare_mandi_arbitrage(
     quantity_quintals: float = 25.0
 ) -> str:
     """
-    Compare commodity prices across multiple APMC mandis within a district or neighboring region
-    to find the highest-paying market and calculate transport net profit.
+    Compare commodity prices across multiple APMC mandis within a district or neighboring regional cluster
+    to find the highest-paying market, list nearby mandis with verified rates, and calculate transport net profit.
     Call this when a farmer asks where to sell, asks for higher profit, or asks about nearby/other mandis.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
     resolved_dist, resolved_market, resolved_state = resolve_location(district, state)
-    norm_dist = resolved_dist
-    records = []
-    reporting_date = None
+    cluster_districts = [resolved_dist] + NEIGHBORING_DISTRICTS.get(resolved_dist, [])
+    cluster_lower = {d.lower() for d in cluster_districts}
 
+    market_latest = {}
+    today_str = datetime.now().strftime("%d/%m/%Y")
+
+    def _parse_d(d_str: str) -> datetime:
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                return datetime.strptime(d_str.strip(), fmt)
+            except Exception:
+                pass
+        return datetime.min
+
+    # 1. Try live data.gov.in API for target district if available
     if _price_service.api_key:
         try:
-            direct, state_wide, rep_date = _price_service.fetch_live_prices(resolved_state, norm_dist, norm_crop)
-            records = direct or state_wide or []
-            if rep_date:
-                reporting_date = rep_date
+            direct, state_wide, rep_date = _price_service.fetch_live_prices(resolved_state, resolved_dist, norm_crop)
+            for r in (direct or state_wide or []):
+                m_raw = r.get("market", "")
+                m_clean = clean_market_name(m_raw)
+                if not m_clean:
+                    continue
+                try:
+                    modal = float(r.get("modal_price", 0))
+                    if modal > 0:
+                        r_date = r.get("arrival_date", today_str)
+                        if m_clean not in market_latest or _parse_d(r_date) >= _parse_d(market_latest[m_clean]["arrival_date"]):
+                            market_latest[m_clean] = {
+                                "market": m_clean,
+                                "market_hi": MARKET_HI_MAP.get(m_clean, m_clean + " मंडी"),
+                                "district": r.get("district", resolved_dist),
+                                "modal_price": modal,
+                                "arrival_date": r_date
+                            }
+                except (ValueError, TypeError):
+                    continue
         except Exception:
             pass
 
-    if not records:
-        hist_records, _ = _price_service.fetch_historical(resolved_state, norm_dist, norm_crop)
-        records = hist_records or []
-        if records:
-            reporting_date = records[0].get("arrival_date")
-
-    # Group by market and keep latest record per market
-    market_latest = {}
-    for r in records:
-        m_name = clean_market_name(r.get("market", ""))
-        if not m_name or m_name in market_latest:
-            continue
+    # 2. Ingest historical records across all cluster districts from local cache
+    cache_file = _price_service.ensure_local_cache()
+    if os.path.exists(cache_file):
         try:
-            modal = float(r.get("modal_price", 0))
-            if modal > 0:
-                market_latest[m_name] = modal
-                if not reporting_date and r.get("arrival_date"):
-                    reporting_date = r.get("arrival_date")
-        except (ValueError, TypeError):
-            continue
+            import csv
+            with open(cache_file, mode="r", encoding="utf-8", errors="ignore") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    r_dist = row.get("district", "").strip()
+                    if r_dist.lower() in cluster_lower:
+                        r_comm = row.get("commodity", "")
+                        if is_commodity_match(norm_crop, r_comm):
+                            m_raw = row.get("market", "")
+                            m_clean = clean_market_name(m_raw)
+                            if not m_clean:
+                                continue
+                            try:
+                                modal = float(row.get("modal_price", 0))
+                                if modal <= 0:
+                                    continue
+                            except (ValueError, TypeError):
+                                continue
+                            r_date = row.get("arrival_date", "").strip()
+                            if m_clean not in market_latest or _parse_d(r_date) > _parse_d(market_latest[m_clean]["arrival_date"]):
+                                market_latest[m_clean] = {
+                                    "market": m_clean,
+                                    "market_hi": MARKET_HI_MAP.get(m_clean, m_clean + " मंडी"),
+                                    "district": r_dist,
+                                    "modal_price": modal,
+                                    "arrival_date": r_date
+                                }
+        except Exception:
+            pass
 
-    if len(market_latest) < 2:
+    if not market_latest:
         return json.dumps({
-            "status": "insufficient_mandis",
-            "message": f"{district} क्षेत्र की सभी मंडियों में भाव लगभग एक समान है।"
+            "status": "not_found",
+            "crop": norm_crop,
+            "district": district,
+            "message": f"किसान भाई, {district} और आसपास के क्षेत्र में {norm_crop} की कोई हालिया आवक दर्ज नहीं मिली है।"
         }, ensure_ascii=False)
 
-    sorted_mandis = sorted(market_latest.items(), key=lambda x: x[1], reverse=True)
-    top_market, top_price = sorted_mandis[0]
-    low_market, low_price = sorted_mandis[-1]
-    spread = top_price - low_price
+    sorted_mandis = sorted(market_latest.values(), key=lambda x: x["modal_price"], reverse=True)
+    top_mandi = sorted_mandis[0]
+    low_mandi = sorted_mandis[-1]
+    spread = top_mandi["modal_price"] - low_mandi["modal_price"]
 
-    # Transport deduction: Rs 15/quintal
+    # Locate local mandi if specified by user or in reference district
+    local_mandi = None
+    if resolved_market:
+        res_m_clean = clean_market_name(resolved_market).lower()
+        local_mandi = next((m for m in sorted_mandis if res_m_clean in m["market"].lower()), None)
+    if not local_mandi:
+        local_mandi = next((m for m in sorted_mandis if m["district"].lower() == resolved_dist.lower()), None)
+
+    local_price = local_mandi["modal_price"] if local_mandi else low_mandi["modal_price"]
+    local_name = local_mandi["market_hi"] if local_mandi else (clean_market_name(district) + " मंडी")
+    effective_spread = top_mandi["modal_price"] - local_price
+
+    # Transport freight: ₹15/quintal
     freight = 15.0
-    net_gain = (spread - freight) * quantity_quintals if spread > freight else 0.0
+    net_gain = (effective_spread - freight) * quantity_quintals if effective_spread > freight else 0.0
 
-    today_str = datetime.now().strftime("%d/%m/%Y")
-    is_today = (reporting_date == today_str)
+    # Build clean structured list of nearby reporting mandis
+    nearby_mandis = []
+    for m in sorted_mandis[:5]:
+        nearby_mandis.append({
+            "market": m["market_hi"],
+            "district": m["district"],
+            "modal_price": m["modal_price"],
+            "rate_display": f"₹{m['modal_price']:.0f} प्रति क्विंटल",
+            "arrival_date": m["arrival_date"]
+        })
+
+    # Generate authoritative spoken Hindi summary
+    crop_display = "चना" if norm_crop.lower() in ("gram", "bengal gram", "chana") else norm_crop
+    dist_display = clean_market_name(district)
+
+    if len(sorted_mandis) >= 2 and effective_spread > 20 and local_mandi and local_mandi["market"] != top_mandi["market"]:
+        third_m = next((m for m in sorted_mandis if m["market"] not in (top_mandi["market"], local_mandi["market"])), None)
+        third_part = f", और {third_m['market_hi']} में ₹{third_m['modal_price']:.0f}" if third_m else ""
+        companion_summary_hi = (
+            f"किसान भाई, {dist_display} के आसपास: {top_mandi['market_hi']} में {crop_display} सबसे ऊँचे भाव ₹{top_mandi['modal_price']:.0f}, "
+            f"{local_name} में ₹{local_price:.0f}{third_part} प्रति क्विंटल रहा है। "
+            f"{top_mandi['market_hi']} में ₹{effective_spread:.0f} प्रति क्विंटल अधिक दाम मिल सकता है।"
+        )
+    elif len(sorted_mandis) >= 2 and spread > 20:
+        second_m = sorted_mandis[1]
+        companion_summary_hi = (
+            f"किसान भाई, {dist_display} के आसपास: {top_mandi['market_hi']} में {crop_display} सबसे ऊँचे भाव ₹{top_mandi['modal_price']:.0f} "
+            f"और {second_m['market_hi']} में ₹{second_m['modal_price']:.0f} प्रति क्विंटल रहा है। "
+            f"{top_mandi['market_hi']} में सबसे अच्छा दाम मिल रहा है।"
+        )
+    elif len(sorted_mandis) >= 2:
+        m1 = sorted_mandis[0]["market_hi"]
+        m2 = sorted_mandis[1]["market_hi"]
+        companion_summary_hi = (
+            f"किसान भाई, {dist_display} और आसपास की मंडियों (जैसे {m1} और {m2}) में {crop_display} का भाव लगभग ₹{top_mandi['modal_price']:.0f} "
+            f"प्रति क्विंटल ही चल रहा है, इसलिए कहीं अलग ले जाने पर विशेष बचत नहीं होगी।"
+        )
+    else:
+        companion_summary_hi = (
+            f"किसान भाई, {dist_display} क्षेत्र में केवल {top_mandi['market_hi']} में ही {crop_display} का भाव ₹{top_mandi['modal_price']:.0f} "
+            f"प्रति क्विंटल दर्ज हुआ है। आसपास की अन्य मंडियों में अभी नई आवक दर्ज नहीं हुई है।"
+        )
 
     return json.dumps({
         "status": "success",
         "crop": norm_crop,
         "district": district,
-        "reporting_date": reporting_date or today_str,
-        "is_today": is_today,
-        "best_market": top_market,
-        "best_price": top_price,
-        "comparison_market": low_market,
-        "comparison_price": low_price,
-        "price_difference": spread,
+        "resolved_district": resolved_dist,
+        "reporting_date": top_mandi["arrival_date"],
+        "is_today": (top_mandi["arrival_date"] == today_str),
+        "best_market": top_mandi["market_hi"],
+        "best_price": top_mandi["modal_price"],
+        "local_market": local_name,
+        "local_price": local_price,
+        "price_difference": effective_spread,
         "net_gain_on_trolley_rs": net_gain,
-        "recommend_travel": spread > 30.0
+        "recommend_travel": effective_spread > 30.0,
+        "nearby_mandis": nearby_mandis,
+        "companion_summary_hi": companion_summary_hi
     }, ensure_ascii=False)
 
 

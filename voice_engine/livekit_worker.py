@@ -51,10 +51,22 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess):
-    """Pre-allocates Silero VAD into memory at worker process startup."""
+    """
+    Pre-allocates tuned Silero VAD into memory at worker process startup.
+    Tuned parameters per production barge-in standards:
+    - activation_threshold=0.7: High confidence threshold to filter ambient farm/mandi noise
+    - min_speech_duration=0.15: 150ms speech duration window to reject transient clicks/breaths
+    - prefix_padding_duration=0.2: 200ms padding for clean onset capture
+    - min_silence_duration=0.5: 500ms trailing silence to detect turn completion
+    """
     try:
-        proc.userdata["vad"] = silero.VAD.load()
-        logger.info("[+] Prewarmed Silero VAD into worker process memory.")
+        proc.userdata["vad"] = silero.VAD.load(
+            activation_threshold=0.7,
+            min_speech_duration=0.15,
+            prefix_padding_duration=0.2,
+            min_silence_duration=0.5,
+        )
+        logger.info("[+] Prewarmed tuned Silero VAD (thresh=0.7, min_dur=150ms) into worker process memory.")
     except Exception as e:
         logger.warning(f"[!] Prewarming VAD warning: {e}")
 
@@ -62,13 +74,20 @@ def prewarm(proc: JobProcess):
 server.setup_fnc = prewarm
 
 
+# Common Indic passive backchannels that should NOT abort or interrupt the agent
+INDIC_BACKCHANNELS = {
+    "हाँ", "हा", "हाँ जी", "हां", "हूँ", "हुं", "अच्छा", "जी", "ठीक", "ठीक है",
+    "सही है", "ok", "okay", "hmm", "mhm"
+}
+
+
 class AgriWatchVoiceAgent(Agent):
     """
     Enhanced Voice Agent with sub-150ms Indic backchanneling and acoustic pre-responses.
-    Eliminates dead air during multi-mandi arbitrage or 30-day historical scans.
+    Configured with use_tts_aligned_transcript=True for strict LLM context alignment on interruption.
     """
     def __init__(self, instructions: str, llm: Any):
-        super().__init__(instructions=instructions, llm=llm)
+        super().__init__(instructions=instructions, llm=llm, use_tts_aligned_transcript=True)
 
     async def on_user_turn_completed(self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage):
         """Fires immediately when STT finishes, before the cognitive LLM reasoning finishes."""
@@ -80,6 +99,12 @@ class AgriWatchVoiceAgent(Agent):
                 text = new_message.content.strip()
             elif isinstance(new_message.content, list):
                 text = " ".join(str(c) for c in new_message.content).strip()
+
+        # If the user spoke a standalone backchannel filler while agent is speaking or listening, skip heavy reasoning
+        cleaned_lower = text.lower().strip()
+        if cleaned_lower in INDIC_BACKCHANNELS:
+            logger.info(f"[*] Detected Indic passive backchannel '{text}'; skipping heavy query trigger.")
+            return
 
         # For heavy temporal, holding ROI, or multi-mandi comparisons, speak an instant acoustic filler
         if any(w in text for w in ("रोक कर", "रोककर", "वेयरहाउस", "गोदाम", "पूरा हिसाब", "स्टोर")):
@@ -105,7 +130,12 @@ class AgriWatchVoiceAssistant:
         self.graph = get_agriwatch_graph()
         self.session_context: Dict[str, Any] = {}
         self.turn_counter: int = 0
-        self.vad = vad or silero.VAD.load()
+        self.vad = vad or silero.VAD.load(
+            activation_threshold=0.7,
+            min_speech_duration=0.15,
+            prefix_padding_duration=0.2,
+            min_silence_duration=0.5,
+        )
 
         # Load Gnani Speech Plugins (use_streaming=False uses local Silero VAD to eliminate 60s idle socket drops)
         gnani_key = os.getenv("GNANI_API_KEY")
@@ -153,12 +183,14 @@ async def entrypoint(ctx: JobContext):
     )
 
     # Modern voice turn handling: adaptive barge-in, false-interruption resumption, and background noise filtering
+    # Modern voice turn handling: adaptive barge-in, false-interruption resumption, and background noise filtering
     turn_handling = TurnHandlingOptions(
         interruption=InterruptionOptions(
             enabled=True,
+            mode="adaptive",
             resume_false_interruption=True,
             false_interruption_timeout=1.2,
-            min_duration=0.4,
+            min_duration=0.15,
             min_words=2,
         )
     )
@@ -204,6 +236,10 @@ async def entrypoint(ctx: JobContext):
             if inactivity_task is not None and not inactivity_task.done():
                 inactivity_task.cancel()
                 inactivity_task = None
+
+    @session.on("agent_false_interruption")
+    def _on_false_interruption(ev: Any):
+        logger.info("[*] False interruption detected (backchannel or transient noise); resuming playback.")
 
     @session.on("close")
     def _on_session_close(ev: CloseEvent):

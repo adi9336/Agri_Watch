@@ -27,3 +27,6 @@ venv/
 
 # Scratch & temporary investigation artifacts
 scratch/
+
+graphify-out/cache/
+graphify-out/.*
