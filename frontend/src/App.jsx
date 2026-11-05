@@ -241,9 +241,15 @@ export default function App() {
             </div>
 
             {voiceError && (
-              <div className="flex items-center gap-2 glass-sm px-3 py-2 rounded-xl text-red-300 text-xs border border-red-500/20">
-                <AlertCircle size={13} />
-                {voiceError}
+              <div className="flex items-start gap-2 glass-sm px-4 py-3 rounded-2xl border border-red-500/20 max-w-sm text-center">
+                <AlertCircle size={15} className="text-red-400 mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-xs font-medium text-red-300 mb-0.5">वॉयस कनेक्शन त्रुटि</div>
+                  <div className="text-xs text-red-300/70 leading-relaxed">{voiceError}</div>
+                  <div className="text-[11px] text-white/30 mt-1.5">
+                    चैट मोड में टेक्स्ट से भी भाव पूछ सकते हैं →
+                  </div>
+                </div>
               </div>
             )}
           </div>

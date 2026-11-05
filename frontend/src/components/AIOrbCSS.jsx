@@ -1,94 +1,155 @@
 import React, { useEffect, useRef } from 'react';
 
 /**
- * AIOrbCSS - Beautiful CSS-animated glass orb that reacts to voice state.
- * Replaces the broken Three.js shader with a smooth, reliable animated gradient.
+ * AIOrbCSS — Beautiful CSS-animated glass orb using inline styles (no Tailwind bugs).
  * State: idle | listening | thinking | speaking
  */
-export default function AIOrbCSS({ state = 'idle', volume = 0, onClick, size = 280 }) {
-  const orbRef = useRef(null);
+export default function AIOrbCSS({ state = 'idle', volume = 0, onClick, size = 260 }) {
+  const coreRef = useRef(null);
 
-  // Drive subtle scale pulsing via JS using volume
+  // Drive volume-reactive scale
   useEffect(() => {
-    if (!orbRef.current) return;
-    const baseScale = 1;
-    const pulse = state === 'speaking' ? baseScale + volume * 0.08 : baseScale;
-    orbRef.current.style.transform = `scale(${pulse})`;
+    if (!coreRef.current) return;
+    const scale = state === 'speaking' ? 1 + volume * 0.1 : 1;
+    coreRef.current.style.transform = `scale(${scale})`;
   }, [volume, state]);
 
-  const configs = {
+  // Per-state design tokens
+  const tokens = {
     idle: {
-      outer: 'shadow-[0_0_60px_8px_rgba(16,185,129,0.18),0_0_120px_20px_rgba(16,185,129,0.08)]',
-      grad: 'from-emerald-900/80 via-teal-800/60 to-emerald-950/90',
-      shine: 'from-white/10 via-transparent to-transparent',
-      ring: 'border-emerald-500/20',
-      glint: 'bg-emerald-400/30',
-      anim: 'animate-[breathe_4s_ease-in-out_infinite]',
+      core: 'radial-gradient(circle at 38% 32%, #065f46 0%, #064e3b 45%, #022c22 100%)',
+      glow: '0 0 70px 20px rgba(16,185,129,0.22), 0 0 140px 50px rgba(16,185,129,0.09)',
+      ring: 'rgba(52,211,153,0.2)',
+      shine: 'rgba(255,255,255,0.08)',
+      blob: '#10b981',
+      anim: 'breathe 4s ease-in-out infinite',
     },
     listening: {
-      outer: 'shadow-[0_0_80px_16px_rgba(52,211,153,0.3),0_0_160px_40px_rgba(52,211,153,0.12)]',
-      grad: 'from-emerald-700/90 via-teal-600/70 to-green-900/80',
-      shine: 'from-white/20 via-white/5 to-transparent',
-      ring: 'border-emerald-400/40',
-      glint: 'bg-emerald-300/50',
-      anim: 'animate-[listenPulse_1.8s_ease-in-out_infinite]',
+      core: 'radial-gradient(circle at 38% 32%, #059669 0%, #047857 45%, #064e3b 100%)',
+      glow: '0 0 90px 28px rgba(52,211,153,0.35), 0 0 180px 70px rgba(52,211,153,0.14)',
+      ring: 'rgba(52,211,153,0.4)',
+      shine: 'rgba(255,255,255,0.14)',
+      blob: '#34d399',
+      anim: 'listenPulse 1.8s ease-in-out infinite',
     },
     thinking: {
-      outer: 'shadow-[0_0_80px_16px_rgba(99,102,241,0.3),0_0_160px_40px_rgba(99,102,241,0.12)]',
-      grad: 'from-indigo-700/80 via-violet-600/60 to-purple-900/80',
-      shine: 'from-white/15 via-indigo-200/10 to-transparent',
-      ring: 'border-indigo-400/40',
-      glint: 'bg-indigo-300/40',
-      anim: 'animate-[thinkSpin_2s_linear_infinite]',
+      core: 'radial-gradient(circle at 38% 32%, #4f46e5 0%, #4338ca 45%, #1e1b4b 100%)',
+      glow: '0 0 90px 28px rgba(99,102,241,0.35), 0 0 180px 70px rgba(99,102,241,0.14)',
+      ring: 'rgba(129,140,248,0.4)',
+      shine: 'rgba(199,210,254,0.12)',
+      blob: '#818cf8',
+      anim: 'thinkSpin 2.5s linear infinite',
     },
     speaking: {
-      outer: 'shadow-[0_0_100px_20px_rgba(245,158,11,0.35),0_0_200px_60px_rgba(245,158,11,0.15)]',
-      grad: 'from-amber-600/90 via-orange-500/70 to-yellow-900/80',
-      shine: 'from-white/25 via-amber-100/10 to-transparent',
-      ring: 'border-amber-400/50',
-      glint: 'bg-amber-200/60',
-      anim: 'animate-[speakBounce_1s_ease-in-out_infinite]',
+      core: 'radial-gradient(circle at 38% 32%, #d97706 0%, #b45309 45%, #451a03 100%)',
+      glow: '0 0 110px 32px rgba(245,158,11,0.4), 0 0 220px 90px rgba(245,158,11,0.16)',
+      ring: 'rgba(251,191,36,0.5)',
+      shine: 'rgba(255,236,153,0.18)',
+      blob: '#fbbf24',
+      anim: 'speakBounce 1s ease-in-out infinite',
     },
   };
 
-  const c = configs[state] || configs.idle;
+  const t = tokens[state] ?? tokens.idle;
+  const half = size / 2;
 
   return (
     <div
       onClick={onClick}
-      style={{ width: size, height: size }}
-      className={`relative cursor-pointer select-none group transition-transform duration-300 ${c.anim}`}
+      style={{ width: size, height: size, position: 'relative', cursor: 'pointer', flexShrink: 0 }}
     >
       {/* Outer glow halo */}
-      <div className={`absolute inset-0 rounded-full ${c.outer} transition-all duration-700`} />
+      <div style={{
+        position: 'absolute',
+        inset: -24,
+        borderRadius: '50%',
+        boxShadow: t.glow,
+        transition: 'box-shadow 0.8s ease',
+        pointerEvents: 'none',
+      }} />
 
-      {/* Glass ring border */}
-      <div className={`absolute inset-0 rounded-full border ${c.ring} transition-all duration-500`} />
+      {/* Border ring */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        borderRadius: '50%',
+        border: `1px solid ${t.ring}`,
+        transition: 'border-color 0.6s ease',
+        pointerEvents: 'none',
+      }} />
 
-      {/* Core orb gradient */}
+      {/* Core orb */}
       <div
-        ref={orbRef}
-        className={`absolute inset-0 rounded-full bg-gradient-radial ${c.grad} transition-all duration-700 overflow-hidden`}
-        style={{ transition: 'transform 80ms linear, background 700ms' }}
+        ref={coreRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          background: t.core,
+          transition: 'background 0.7s ease, transform 80ms linear',
+          overflow: 'hidden',
+          animation: t.anim,
+        }}
       >
-        {/* Glass specular highlight - top left */}
-        <div className={`absolute top-[8%] left-[12%] w-[42%] h-[36%] rounded-full bg-gradient-to-br ${c.shine} blur-sm`} />
+        {/* Glass specular highlight — top-left "glint" */}
+        <div style={{
+          position: 'absolute',
+          top: '8%',
+          left: '10%',
+          width: '44%',
+          height: '38%',
+          borderRadius: '50%',
+          background: `radial-gradient(circle, ${t.shine} 0%, transparent 70%)`,
+          filter: 'blur(6px)',
+          pointerEvents: 'none',
+        }} />
 
-        {/* Secondary inner glow */}
-        <div className="absolute bottom-[10%] right-[10%] w-[30%] h-[30%] rounded-full bg-white/[0.04] blur-md" />
+        {/* Secondary bottom-right soft fill */}
+        <div style={{
+          position: 'absolute',
+          bottom: '8%',
+          right: '10%',
+          width: '30%',
+          height: '28%',
+          borderRadius: '50%',
+          background: 'rgba(255,255,255,0.03)',
+          filter: 'blur(8px)',
+          pointerEvents: 'none',
+        }} />
 
-        {/* Rotating color blobs inside (liquid glass look) */}
-        <div className={`absolute inset-0 rounded-full ${
-          state === 'thinking' ? 'animate-[spin_3s_linear_infinite]' :
-          state === 'speaking' ? 'animate-[spin_2s_linear_infinite_reverse]' :
-          'animate-[spin_8s_linear_infinite]'
-        } opacity-40`}>
-          <div className={`absolute top-1/4 left-1/4 w-1/2 h-1/2 rounded-full ${c.glint} blur-xl`} />
+        {/* Rotating inner liquid blob */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          animation: state === 'thinking' ? 'spin 2.5s linear infinite'
+                   : state === 'speaking' ? 'spin 1.8s linear infinite reverse'
+                   : 'spin 7s linear infinite',
+        }}>
+          <div style={{
+            width: '55%',
+            height: '55%',
+            borderRadius: '50%',
+            background: t.blob,
+            opacity: 0.22,
+            filter: 'blur(22px)',
+            transform: 'translate(14%, -12%)',
+          }} />
         </div>
       </div>
 
-      {/* Hover glow ring */}
-      <div className="absolute inset-[-6px] rounded-full border border-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      {/* Hover outer ring */}
+      <div style={{
+        position: 'absolute',
+        inset: -8,
+        borderRadius: '50%',
+        border: '1px solid rgba(255,255,255,0.05)',
+        pointerEvents: 'none',
+        transition: 'opacity 0.3s',
+      }} />
     </div>
   );
 }

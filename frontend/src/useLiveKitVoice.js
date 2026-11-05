@@ -105,7 +105,23 @@ export function useLiveKitVoice() {
       setStatus('connected');
     } catch (err) {
       console.error('[LiveKit] Voice connection error:', err);
-      setError(err.message || 'Failed to connect voice session');
+
+      // Friendly Hindi error messages for common WebRTC failures
+      let friendlyMsg = err.message || 'Failed to connect voice session';
+      const name = err.name || '';
+      if (name === 'NotFoundError' || friendlyMsg.includes('not found') || friendlyMsg.includes('Requested device')) {
+        friendlyMsg = 'माइक नहीं मिला — कृपया माइक कनेक्ट करें और ब्राउज़र परमिशन दें';
+      } else if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || friendlyMsg.includes('denied')) {
+        friendlyMsg = 'माइक की परमिशन नहीं दी — ब्राउज़र में माइक एक्सेस Allow करें';
+      } else if (name === 'NotReadableError') {
+        friendlyMsg = 'माइक पहले से किसी दूसरे ऐप में उपयोग हो रहा है — बंद करके पुनः प्रयास करें';
+      } else if (name === 'OverconstrainedError') {
+        friendlyMsg = 'ऑडियो सेटिंग्स में समस्या — माइक सपोर्ट नहीं है';
+      } else if (friendlyMsg.includes('LIVEKIT_URL') || friendlyMsg.includes('500')) {
+        friendlyMsg = 'LiveKit सर्वर कॉन्फ़िगर नहीं है — .env में LIVEKIT_URL जोड़ें';
+      }
+
+      setError(friendlyMsg);
       setStatus('error');
       if (roomRef.current) {
         roomRef.current.disconnect();
