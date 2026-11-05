@@ -246,9 +246,9 @@
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1793908603.9071352,
-    "seen": 1793908635.0503614,
-    "ast_hash": "78d9666f143a2086cd1d6afab154b3e6",
+    "mtime": 1793909201.2475834,
+    "seen": 1793909236.1790075,
+    "ast_hash": "dfe263e953e336504155af4cb59c839b",
     "semantic_hash": ""
   },
   "frontend/src/main.jsx": {
@@ -258,8 +258,8 @@
     "semantic_hash": ""
   },
   "frontend/src/useLiveKitVoice.js": {
-    "mtime": 1793908531.5135953,
-    "seen": 1793908635.0503614,
+    "mtime": 1793909002.3040116,
+    "seen": 1793909236.1790075,
     "ast_hash": "544a3e25cf77b1173792b8161ba69963",
     "semantic_hash": ""
   },
@@ -324,20 +324,20 @@
     "semantic_hash": ""
   },
   "frontend/components.json": {
-    "mtime": 1793908498.3969636,
-    "seen": 1793908635.0503614,
-    "ast_hash": "8dbaeafd542907ea8916a7d03e83b21c",
+    "mtime": 1793908677.246166,
+    "seen": 1793909236.1790075,
+    "ast_hash": "a67c85cd08d7cad3c094f806dfcaef47",
     "semantic_hash": ""
   },
   "frontend/src/components/AIBlob.jsx": {
-    "mtime": 1793908492.9888203,
-    "seen": 1793908635.0503614,
-    "ast_hash": "709d1b9e054fb3c1365ea1a3d52ba9f9",
+    "mtime": 1793908677.3673098,
+    "seen": 1793909236.1790075,
+    "ast_hash": "9745761955e6cbaa0f95125e349e869c",
     "semantic_hash": ""
   },
   "frontend/package-lock.json": {
-    "mtime": 1793908397.0641334,
-    "seen": 1793908635.0503614,
+    "mtime": 1793908882.246107,
+    "seen": 1793909236.1790075,
     "ast_hash": "e7327d2100fa1f1cd7d360829afd331c",
     "semantic_hash": ""
   }

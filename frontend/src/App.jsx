@@ -1,21 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Mic,
-  MicOff,
   Volume2,
   Send,
   Sparkles,
-  TrendingUp,
   MapPin,
   ShieldCheck,
   RefreshCw,
   PhoneCall,
   PhoneOff,
   Radio,
-  CheckCircle2,
   AlertCircle,
-  HelpCircle,
-  ArrowRight
+  TrendingUp,
+  ArrowUpRight
 } from 'lucide-react';
 import { useLiveKitVoice } from './useLiveKitVoice';
 import AIBlob from './components/AIBlob';
@@ -25,11 +22,10 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'chat'
   const [inputText, setInputText] = useState('');
-  const [blobStatePreview, setBlobStatePreview] = useState(null); // null = auto from WebRTC/AI
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      text: 'नमस्ते किसान भाई! मैं एग्री-वॉच हूँ। आप अपनी फसल और मंडी का नाम बोलकर या लिखकर आज का भाव, आसपास की मंडियों का मुनाफा और सरकारी समर्थन मूल्य (MSP) जान सकते हैं।',
+      text: 'नमस्ते किसान भाई! मैं एग्री-वॉच हूँ। अपनी फसल और मंडी का नाम बोलकर या लिखकर आज का मंडी भाव, आसपास का मुनाफा और सरकारी MSP जान सकते हैं।',
       time: 'अभी'
     }
   ]);
@@ -38,8 +34,10 @@ export default function App() {
   const [metadata, setMetadata] = useState(null);
   const [lastResult, setLastResult] = useState(null);
 
+  const chatEndRef = useRef(null);
+
   // Derive 3D AI Blob state (idle | listening | thinking | speaking)
-  const activeBlobState = blobStatePreview || (
+  const activeBlobState = 
     status === 'connecting' || isTyping
       ? 'thinking'
       : status === 'connected'
@@ -48,10 +46,7 @@ export default function App() {
           : isUserSpeaking
             ? 'listening'
             : 'listening'
-        : 'idle'
-  );
-
-  const chatEndRef = useRef(null);
+        : 'idle';
 
   // Load metadata on mount
   useEffect(() => {
@@ -64,7 +59,7 @@ export default function App() {
   // Auto scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isTyping]);
 
   // Handle Text Query
   const handleSendMessage = async (customText = null) => {
@@ -104,7 +99,7 @@ export default function App() {
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // If price was returned in context, set card
+      // If price was returned in context, fetch card
       if (data.session_context?.crop && data.session_context?.district) {
         fetchPriceCard(data.session_context.crop, data.session_context.district);
       }
@@ -114,7 +109,7 @@ export default function App() {
         ...prev,
         {
           role: 'assistant',
-          text: 'किसान भाई, संपर्क करने में समस्या हुई। कृपया दोबारा पूछें।',
+          text: 'माफ़ करें, जानकारी प्राप्त करने में अस्थायी समस्या हुई। कृपया दोबारा पूछें।',
           time: 'अभी'
         }
       ]);
@@ -137,7 +132,6 @@ export default function App() {
     }
   };
 
-  // Toggle Voice Call
   const handleVoiceToggle = () => {
     if (status === 'connected' || status === 'connecting') {
       disconnect();
@@ -147,126 +141,99 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#090d16] text-gray-100">
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-[#111827]/90 backdrop-blur-md border-b border-gray-800 px-4 py-3">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-700 flex items-center justify-center text-xl shadow-lg shadow-green-900/30">
-              🌾
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold text-white tracking-wide">एग्री-वॉच (Agri_watch)</h1>
-                <span className="text-[10px] uppercase font-semibold bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded-full">
-                  लाइव APMC
-                </span>
-              </div>
-              <p className="text-xs text-gray-400">संप्रभु कृषि मंडी वॉयस इंटेलिजेंस एजेंट</p>
+    <div className="relative min-h-screen bg-[#03060d] text-zinc-100 flex flex-col justify-between selection:bg-emerald-500/20 selection:text-emerald-300">
+      {/* Dynamic Ambient Glass Glow Orbs */}
+      <div className="ambient-glow-emerald -top-20 left-1/4 pointer-events-none" />
+      <div className="ambient-glow-amber bottom-10 -right-20 pointer-events-none" />
+      <div className="ambient-glow-cyan top-1/3 -left-20 pointer-events-none" />
+
+      {/* Floating Minimalist Island Navigation */}
+      <header className="sticky top-4 z-50 max-w-4xl w-[94%] mx-auto">
+        <div className="glass-surface px-4 sm:px-6 py-2.5 flex items-center justify-between">
+          {/* Brand Mark */}
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] animate-pulse" />
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold tracking-wider text-shimmer uppercase">Agri-Watch</span>
+              <span className="text-[10px] text-zinc-400 -mt-0.5 tracking-wide">कृषि मंडी वॉयस इंटेलिजेंस</span>
             </div>
           </div>
 
-          {/* Connection Status Pill */}
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-800/80 border border-gray-700/60 text-xs">
-              <span className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-400 animate-pulse' : status === 'connecting' ? 'bg-amber-400 animate-ping' : 'bg-gray-500'}`} />
-              <span className="text-gray-300">
-                {status === 'connected' ? 'WebRTC वॉयस सक्रिय' : status === 'connecting' ? 'कनेक्ट हो रहा है...' : 'वॉयस स्टैंडबाय'}
-              </span>
-            </div>
-
+          {/* Whispering Mode Switcher Capsule */}
+          <div className="flex p-0.5 rounded-full bg-white/[0.03] border border-white/[0.08] shadow-inner">
             <button
-              onClick={handleVoiceToggle}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold shadow-lg transition-all ${
-                status === 'connected'
-                  ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-900/30'
-                  : 'bg-green-600 hover:bg-green-700 text-white shadow-green-900/30'
+              onClick={() => setActiveTab('voice')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-300 ${
+                activeTab === 'voice'
+                  ? 'bg-white/[0.1] text-white shadow-[0_2px_12px_rgba(0,0,0,0.4)] border border-white/[0.12]'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              {status === 'connected' ? (
-                <>
-                  <PhoneOff size={15} />
-                  कॉल काटें
-                </>
-              ) : status === 'connecting' ? (
-                <>
-                  <RefreshCw size={15} className="animate-spin" />
-                  जुड़ रहे हैं...
-                </>
-              ) : (
-                <>
-                  <PhoneCall size={15} />
-                  वॉयस कॉल शुरू करें
-                </>
-              )}
+              <Radio size={13} className={activeTab === 'voice' ? 'text-emerald-400' : ''} />
+              <span>वॉयस मोड</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-300 ${
+                activeTab === 'chat'
+                  ? 'bg-white/[0.1] text-white shadow-[0_2px_12px_rgba(0,0,0,0.4)] border border-white/[0.12]'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Sparkles size={13} className={activeTab === 'chat' ? 'text-amber-400' : ''} />
+              <span>खोज व चैट</span>
             </button>
           </div>
+
+          {/* Quick Voice Call Pill */}
+          <button
+            onClick={handleVoiceToggle}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-300 ${
+              status === 'connected'
+                ? 'glass-btn-danger text-red-200'
+                : status === 'connecting'
+                ? 'glass-pill text-amber-200'
+                : 'glass-btn-primary text-emerald-100'
+            }`}
+          >
+            {status === 'connected' ? (
+              <>
+                <PhoneOff size={13} />
+                <span className="hidden sm:inline">कॉल काटें</span>
+              </>
+            ) : status === 'connecting' ? (
+              <>
+                <RefreshCw size={13} className="animate-spin" />
+                <span className="hidden sm:inline">जुड़ रहे हैं...</span>
+              </>
+            ) : (
+              <>
+                <PhoneCall size={13} />
+                <span>लाइव कॉल</span>
+              </>
+            )}
+          </button>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
-        {/* Mode Selector Tabs */}
-        <div className="flex bg-gray-900/90 p-1 rounded-2xl border border-gray-800 self-center w-full max-w-md shadow-inner">
-          <button
-            onClick={() => setActiveTab('voice')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
-              activeTab === 'voice'
-                ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-md'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            <Radio size={16} />
-            वॉयस मोड (WebRTC)
-          </button>
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
-              activeTab === 'chat'
-                ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-md'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            <Sparkles size={16} />
-            त्वरित खोज व चैट
-          </button>
-        </div>
-
-        {/* VOICE MODE PANEL WITH 3D AI BLOB */}
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-4xl w-[94%] mx-auto my-6 flex flex-col justify-center relative z-10">
+        
+        {/* ================================================================== */}
+        {/* VOICE MODE: Pure Glass AI Orb Centerpiece */}
+        {/* ================================================================== */}
         {activeTab === 'voice' && (
-          <div className="flex flex-col items-center justify-center py-6 sm:py-8 glass-panel p-6 sm:p-8 text-center relative overflow-hidden">
-            {/* Ambient background glows */}
-            <div className="absolute -top-24 -left-24 w-72 h-72 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
-
-            {/* AI Blob State Pill */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900/90 border border-gray-700/70 text-xs shadow-md mb-2">
-              <span className={`w-2 h-2 rounded-full ${
-                activeBlobState === 'speaking'
-                  ? 'bg-amber-400 animate-ping'
-                  : activeBlobState === 'listening'
-                  ? 'bg-emerald-400 animate-pulse'
-                  : activeBlobState === 'thinking'
-                  ? 'bg-cyan-400 animate-spin'
-                  : 'bg-gray-400'
-              }`} />
-              <span className="text-gray-300 font-medium">
-                {activeBlobState === 'speaking' && '✨ AI Blob: Speaking (एजेंट बोल रहा है)'}
-                {activeBlobState === 'listening' && '🎙️ AI Blob: Listening (सुन रहा हूँ...)'}
-                {activeBlobState === 'thinking' && '🧠 AI Blob: Thinking (सोच रहा हूँ...)'}
-                {activeBlobState === 'idle' && '💎 AI Blob: Idle (स्टैंडबाय)'}
-              </span>
-            </div>
-
-            {/* 3D AI Glass Orb / Blob Container */}
-            <div className="relative my-2 flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center py-6 sm:py-10 text-center select-none">
+            
+            {/* The Floating 3D Glass AI Orb */}
+            <div className="relative flex items-center justify-center my-2">
               <AIBlob
                 state={activeBlobState}
                 volume={volume}
-                size={300}
+                size={320}
                 interactive={true}
                 onClick={handleVoiceToggle}
-                className="drop-shadow-[0_0_35px_rgba(16,185,129,0.35)]"
+                className="transition-transform duration-500 hover:scale-[1.04]"
                 colors={{
                   core: '#f59e0b',
                   body: '#10b981',
@@ -274,249 +241,202 @@ export default function App() {
                   active: '#22c55e'
                 }}
               />
-
-              {/* Click-to-call Center Helper (when idle or disconnected) */}
-              {status === 'disconnected' && (
-                <div
-                  onClick={handleVoiceToggle}
-                  className="absolute pointer-events-none px-3 py-1 rounded-full bg-gray-950/80 border border-gray-700/60 backdrop-blur-sm text-[11px] text-gray-300 shadow-lg tracking-wide animate-pulse"
-                >
-                  टैप करके कॉल करें
-                </div>
-              )}
             </div>
 
-            {/* Live Volume Audio Wave Bar (When speaking or listening) */}
+            {/* Ethereal Floating Status Pill */}
+            <div className="mt-4 flex items-center gap-2 px-4 py-2 rounded-full glass-surface-subtle border border-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
+              <span className={`w-2 h-2 rounded-full ${
+                activeBlobState === 'speaking'
+                  ? 'bg-amber-400 animate-ping'
+                  : activeBlobState === 'listening'
+                  ? 'bg-emerald-400 animate-pulse'
+                  : activeBlobState === 'thinking'
+                  ? 'bg-cyan-400 animate-spin'
+                  : 'bg-zinc-500'
+              }`} />
+              <span className="text-xs font-medium tracking-wide text-zinc-300">
+                {status === 'connected' ? (
+                  isAgentSpeaking ? (
+                    '🌾 एग्री-वॉच जवाब दे रहा है (टोकने के लिए बोलें)'
+                  ) : isUserSpeaking ? (
+                    '🎙️ सुन रहा हूँ... आप बोल रहे हैं'
+                  ) : (
+                    'माइक सक्रिय है · फसल व मंडी का नाम पूछें'
+                  )
+                ) : status === 'connecting' ? (
+                  'लाइव वॉयस रूम से जुड़ रहे हैं...'
+                ) : (
+                  'ऑर्ब पर टैप करें या ऊपर लाइव कॉल दबाएं'
+                )}
+              </span>
+            </div>
+
+            {/* Subtle Audio Waveform (Only visible when active audio is moving) */}
             {(isAgentSpeaking || isUserSpeaking) && (
-              <div className="flex items-center gap-1.5 my-2">
-                {[40, 75, 100, 60, 85, 45, 90, 65, 30].map((h, i) => (
+              <div className="flex items-center gap-1.5 mt-4 h-6">
+                {[35, 70, 95, 60, 85, 40, 90, 65, 30].map((h, i) => (
                   <div
                     key={i}
-                    className="w-1 bg-gradient-to-t from-emerald-500 to-amber-400 rounded-full transition-all duration-100"
+                    className="w-1 bg-gradient-to-t from-emerald-400 to-amber-300 rounded-full transition-all duration-75"
                     style={{
-                      height: `${Math.max(6, Math.min(28, (volume + 0.2) * (h / 3)))}px`,
-                      animationDelay: `${i * 60}ms`
+                      height: `${Math.max(4, Math.min(24, (volume + 0.25) * (h / 3.2)))}px`,
                     }}
                   />
                 ))}
               </div>
             )}
 
-            {/* Voice Status Explanation */}
-            <div className="max-w-md mx-auto mt-2">
-              <h2 className="text-base sm:text-lg font-bold text-white">
-                {status === 'connected'
-                  ? isAgentSpeaking
-                    ? '🌾 एग्री-वॉच जवाब दे रहा है'
-                    : isUserSpeaking
-                    ? '🎙️ आप बोल रहे हैं (सुन रहा हूँ)'
-                    : '🎙️ अपनी भाषा (हिंदी) में निसंकोच पूछें'
-                  : 'AI Blob 3D ग्लास ऑर्ब से सीधे बोलें'}
-              </h2>
-              <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                {status === 'connected'
-                  ? 'सटीक 120ms बार्ज-इन: यदि आप बीच में टोकना चाहें, तो सीधे बोलना शुरू करें - एजेंट तुरंत रुक जाएगा।'
-                  : 'थ्री.जेएस और सिम्प्लेक्स नॉइज़ 3D शेडर: आपके बोलने, सोचने और एजेंट के जवाब के साथ ऑर्ब लाइव रिएक्ट करता है।'}
-              </p>
-            </div>
-
-            {/* Interactive State Demo Switcher */}
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5 bg-gray-900/60 p-1.5 rounded-xl border border-gray-800 text-[11px]">
-              <span className="text-gray-500 px-2 font-medium">Shader State:</span>
+            {/* Minimal Prompt Chips */}
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-2 max-w-lg">
               {[
-                { label: 'Auto (Live)', value: null },
-                { label: 'Idle', value: 'idle' },
-                { label: 'Listening', value: 'listening' },
-                { label: 'Thinking', value: 'thinking' },
-                { label: 'Speaking', value: 'speaking' },
-              ].map((btn) => (
+                'कल्याण मंडी में चना का भाव',
+                'झांसी में गेहूं का ताजा रेट',
+                'कटनी में चना का आज का भाव',
+                'गेहूं का सरकारी MSP क्या है?'
+              ].map((text, i) => (
                 <button
-                  key={btn.label}
-                  onClick={() => setBlobStatePreview(btn.value)}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
-                    blobStatePreview === btn.value
-                      ? 'bg-emerald-600 text-white font-semibold shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                  }`}
+                  key={i}
+                  onClick={() => {
+                    setActiveTab('chat');
+                    handleSendMessage(text);
+                  }}
+                  className="glass-pill px-3.5 py-1.5 text-xs text-zinc-400 hover:text-white flex items-center gap-1.5 group"
                 >
-                  {btn.label}
+                  <span>{text}</span>
+                  <ArrowUpRight size={12} className="opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </button>
               ))}
             </div>
 
             {voiceError && (
-              <div className="mt-4 flex items-center gap-2 bg-red-950/60 border border-red-800 text-red-300 text-xs px-4 py-2 rounded-xl">
-                <AlertCircle size={16} />
-                <span>त्रुटि: {voiceError}</span>
+              <div className="mt-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/40 border border-red-500/30 text-red-300 text-xs">
+                <AlertCircle size={14} />
+                <span>{voiceError}</span>
               </div>
             )}
           </div>
         )}
 
-        {/* PRICE INTELLIGENCE CARD (If available) */}
+        {/* ================================================================== */}
+        {/* CHAT MODE: Transparent Minimalist Stream */}
+        {/* ================================================================== */}
+        {activeTab === 'chat' && (
+          <div className="flex flex-col flex-1 h-[68vh] justify-between">
+            {/* Conversation Stream */}
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4 py-2">
+              {messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-emerald-500/[0.12] border border-emerald-400/[0.25] text-emerald-100 shadow-[0_4px_20px_rgba(16,185,129,0.15)] rounded-tr-sm'
+                        : 'glass-surface text-zinc-200 rounded-tl-sm'
+                    }`}
+                  >
+                    <p>{msg.text}</p>
+                    <span className="block text-[10px] text-zinc-500 mt-1.5 text-right font-mono">
+                      {msg.time}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {isTyping && (
+                <div className="flex items-center gap-2 glass-surface-subtle px-4 py-2.5 rounded-2xl w-fit">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="text-xs text-zinc-400 ml-1">मंडी भाव खोज रहे हैं...</span>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Floating Glass Omnibar */}
+            <div className="pt-3">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }}
+                className="glass-input flex items-center px-4 py-2 gap-2"
+              >
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="फसल व मंडी लिखें (उदा. राठ में चना, झांसी में गेहूं)..."
+                  className="flex-1 bg-transparent border-none outline-none text-sm text-zinc-100 placeholder:text-zinc-500"
+                />
+
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() || isTyping}
+                  className="glass-btn-primary p-2 text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Send size={15} />
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================== */}
+        {/* MANDI PRICE CRYSTALLINE HUD (Floats above or below when active) */}
+        {/* ================================================================== */}
         {lastResult && (
-          <div className="glass-panel p-5 border-l-4 border-l-green-500 bg-gradient-to-r from-green-950/20 to-gray-900 shadow-xl">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🌱</span>
+          <div className="mt-4 glass-surface px-5 py-4 border-l-2 border-l-emerald-400 relative overflow-hidden transition-all duration-300">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-lg">
+                  🌾
+                </div>
                 <div>
-                  <h3 className="font-bold text-white text-base sm:text-lg">
-                    {lastResult.market || lastResult.district} मंडी
-                  </h3>
-                  <p className="text-xs text-gray-400 flex items-center gap-1">
-                    <MapPin size={12} />
-                    {lastResult.district} ({lastResult.crop} - {lastResult.variety || 'सामान्य'})
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-white text-base">
+                      {lastResult.crop} · {lastResult.district}
+                    </h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 flex items-center gap-1">
+                      <ShieldCheck size={11} />
+                      Agmarknet
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    मंडी: {lastResult.market} · {lastResult.reporting_date || lastResult.requested_date}
                   </p>
                 </div>
               </div>
 
-              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
-                lastResult.is_today
-                  ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-              }`}>
-                {lastResult.date_note || lastResult.reporting_date}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 my-4">
-              <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/40">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider block">औसत / मॉडल भाव</span>
-                <span className="text-xl sm:text-2xl font-black text-green-400 block mt-0.5">
-                  ₹{Number(lastResult.modal_price || 0).toLocaleString('en-IN')}
-                </span>
-                <span className="text-[10px] text-gray-400">प्रति क्विंटल</span>
-              </div>
-
-              <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/40">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider block">न्यूनतम भाव</span>
-                <span className="text-lg font-bold text-gray-300 block mt-0.5">
-                  ₹{Number(lastResult.min_price || 0).toLocaleString('en-IN')}
-                </span>
-                <span className="text-[10px] text-gray-400">प्रति क्विंटल</span>
-              </div>
-
-              <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/40">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider block">अधिकतम भाव</span>
-                <span className="text-lg font-bold text-gray-300 block mt-0.5">
-                  ₹{Number(lastResult.max_price || 0).toLocaleString('en-IN')}
-                </span>
-                <span className="text-[10px] text-gray-400">प्रति क्विंटल</span>
-              </div>
-
-              <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/40">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider block">आधिकारिक स्थिति</span>
-                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1 mt-1.5">
-                  <ShieldCheck size={14} />
-                  Agmarknet सत्यापित
-                </span>
-                <span className="text-[10px] text-gray-400 block mt-1">तारीख: {lastResult.reporting_date}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* QUICK SUGGESTION CHIPS */}
-        {metadata && (
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
-              <Sparkles size={14} className="text-amber-400" />
-              त्वरित सवाल (टैप करें):
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {metadata.suggestions?.slice(0, 4).map((sug, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSendMessage(sug)}
-                  className="text-xs bg-gray-800/70 hover:bg-gray-700 border border-gray-700/60 hover:border-green-500/40 text-gray-300 px-3 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5"
-                >
-                  <span>{sug}</span>
-                  <ArrowRight size={12} className="text-gray-500" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* CHAT / TRANSCRIPT HISTORY STREAM */}
-        <div className="glass-panel p-4 flex flex-col flex-1 min-h-[300px] max-h-[420px] overflow-y-auto">
-          <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-              <CheckCircle2 size={14} className="text-green-400" />
-              संवाद इतिहास (Live Transcript & Chat)
-            </span>
-            <span className="text-[10px] text-gray-500">
-              {messages.length} संदेश
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-3 flex-1">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex flex-col max-w-[85%] sm:max-w-[75%] ${
-                  msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'
-                }`}
-              >
-                <div
-                  className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-md ${
-                    msg.role === 'user'
-                      ? 'bg-gradient-to-r from-green-700 to-emerald-700 text-white rounded-tr-none'
-                      : 'bg-gray-800/90 text-gray-200 border border-gray-700/60 rounded-tl-none'
-                  }`}
-                >
-                  {msg.text}
+              {/* Price Highlights */}
+              <div className="flex items-center gap-6">
+                <div>
+                  <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">मॉडल भाव</span>
+                  <span className="text-xl sm:text-2xl font-bold text-emerald-shimmer font-mono">
+                    ₹{Number(lastResult.modal_price).toLocaleString('en-IN')}
+                    <span className="text-xs font-normal text-zinc-400 ml-1">/क्विंटल</span>
+                  </span>
                 </div>
-                <span className="text-[10px] text-gray-500 mt-1 px-1">
-                  {msg.role === 'user' ? 'आप' : 'एग्री-वॉच'} • {msg.time}
-                </span>
-              </div>
-            ))}
 
-            {isTyping && (
-              <div className="self-start flex items-center gap-2 bg-gray-800/60 border border-gray-700/40 px-3 py-2 rounded-2xl text-xs text-gray-400">
-                <RefreshCw size={13} className="animate-spin text-green-400" />
-                <span>एग्री-वॉच मंडी डेटाबेस से भाव जांच रहा है...</span>
+                <div className="hidden sm:flex flex-col text-right text-xs text-zinc-400 border-l border-white/[0.08] pl-4">
+                  <span>न्यूनतम: <strong className="text-zinc-200">₹{Number(lastResult.min_price || 0).toLocaleString('en-IN')}</strong></span>
+                  <span>अधिकतम: <strong className="text-zinc-200">₹{Number(lastResult.max_price || 0).toLocaleString('en-IN')}</strong></span>
+                </div>
               </div>
-            )}
-            <div ref={chatEndRef} />
+            </div>
           </div>
-        </div>
-
-        {/* INPUT BAR (For Chat & Search Mode) */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage();
-          }}
-          className="flex items-center gap-2 bg-gray-900/90 border border-gray-700/80 rounded-2xl p-2 shadow-xl focus-within:border-green-500/80 transition-all"
-        >
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="अपनी फसल और मंडी का नाम लिखें (जैसे: राठ मंडी में चना, झांसी में गेहूं)..."
-            className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || isTyping}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:hover:bg-green-600 text-white p-2.5 rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer"
-          >
-            <Send size={16} />
-          </button>
-        </form>
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-800/80 py-4 px-4 bg-gray-950 text-center text-xs text-gray-500">
-        <p className="max-w-3xl mx-auto">
-          🌾 <strong>Agri_watch</strong> • आधिकारिक डेटा स्रोत:{' '}
-          <a href="https://data.gov.in" target="_blank" rel="noreferrer" className="text-green-400 hover:underline">
-            data.gov.in
-          </a>{' '}
-          व Agmarknet दैनिक थोक मूल्य • CACP न्यूनतम समर्थन मूल्य (MSP) • WebRTC वॉयस पावर्ड बाइ LiveKit
-        </p>
+      {/* Whisper Minimal Footer */}
+      <footer className="max-w-4xl w-[94%] mx-auto pb-4 pt-2 text-center text-[11px] text-zinc-500 flex items-center justify-between">
+        <span>© 2026 Agri-Watch · संप्रभु भारतीय कृषि वॉयस इंटेलिजेंस</span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          LiveKit WebRTC + Silero VAD
+        </span>
       </footer>
     </div>
   );
