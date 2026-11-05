@@ -97,14 +97,14 @@ export default function App() {
   ];
 
   return (
-    <div className="relative min-h-screen bg-[#060b14] bg-grid overflow-hidden flex flex-col">
+    <div className="relative h-full bg-[#060b14] bg-grid overflow-hidden flex flex-col">
       {/* ── Scene ambient lights ── */}
       <div className="scene-light w-[600px] h-[600px] bg-emerald-500/20 -top-32 left-1/2 -translate-x-1/2" />
       <div className="scene-light w-[400px] h-[400px] bg-indigo-500/15 bottom-0 -right-32" />
       <div className="scene-light w-[300px] h-[300px] bg-amber-500/12 top-1/2 -left-24" />
 
       {/* ── Floating Island Nav ── */}
-      <div className="relative z-50 max-w-3xl w-full mx-auto px-4 pt-5">
+      <div className="relative z-50 max-w-3xl w-full mx-auto px-4 pt-3 shrink-0">
         <div className="glass rounded-2xl px-4 py-2.5 flex items-center justify-between gap-3">
           {/* Brand */}
           <div className="flex items-center gap-2.5 shrink-0">
@@ -155,13 +155,13 @@ export default function App() {
       </div>
 
       {/* ── Main Content ── */}
-      <main className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-4 py-8 flex flex-col">
+      <main className="relative z-10 flex-1 min-h-0 max-w-3xl w-full mx-auto px-4 pt-3 pb-2 flex flex-col overflow-hidden">
 
         {/* ============================================================
             VOICE TAB — Centered orb experience
             ============================================================ */}
         {activeTab === 'voice' && (
-          <div className="flex flex-col items-center justify-center flex-1 gap-6">
+          <div className="flex flex-col items-center justify-center flex-1 min-h-0 gap-3 overflow-hidden">
 
             {/* Orb area */}
             <div className="relative flex items-center justify-center">
@@ -182,7 +182,7 @@ export default function App() {
                 <AIOrbCSS
                   state={orbState}
                   volume={volume}
-                  size={260}
+                  size={200}
                   onClick={handleVoiceToggle}
                 />
               </div>
@@ -259,7 +259,7 @@ export default function App() {
             CHAT TAB
             ============================================================ */}
         {activeTab === 'chat' && (
-          <div className="flex flex-col flex-1 gap-3" style={{ maxHeight: '72vh' }}>
+          <div className="flex flex-col flex-1 min-h-0 gap-3">
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-2 min-h-0">
@@ -340,7 +340,7 @@ export default function App() {
       </main>
 
       {/* ── Footer ── */}
-      <div className="relative z-10 max-w-3xl w-full mx-auto px-4 pb-4 flex justify-between text-[11px] text-white/20">
+      <div className="relative z-10 max-w-3xl w-full mx-auto px-4 py-2 flex justify-between text-[11px] text-white/20 shrink-0">
         <span>© 2026 Agri-Watch</span>
         <span className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/70" />
