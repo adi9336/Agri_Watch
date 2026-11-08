@@ -2,7 +2,7 @@
 
 :root { --ink:#183126; --muted:#708077; --line:#e5ece6; --green:#1b6b4b; --mint:#e6f3e9; --cream:#f6f8f4; --gold:#c8872d; }
 * { box-sizing:border-box; }
-body { margin:0; font-family:'DM Sans','Noto Sans Devanagari',sans-serif; color:var(--ink); background:var(--cream); }
+body { margin:0; font-family:'DM Sans',var(--font-sans); color:var(--ink); background:var(--cream); }
 button,input { font:inherit; } button { cursor:pointer; }
 .app-shell { min-height:100vh; background:radial-gradient(circle at 72% 8%,#e6f4e8 0,transparent 26%),var(--cream); position:relative; overflow:hidden; }
 .ambient { position:absolute; border-radius:999px; filter:blur(70px); pointer-events:none; opacity:.5; }.ambient-one { width:280px;height:280px;background:#d8efdc;right:-100px;top:180px }.ambient-two { width:220px;height:220px;background:#f7e9c9;left:28%;bottom:-100px }

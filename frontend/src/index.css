@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --font-sans: 'Inter', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', 'Noto Sans Devanagari', 'Noto Sans Bengali', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Kannada', 'Noto Sans Malayalam', 'Noto Sans Tamil', 'Noto Sans Telugu', system-ui, -apple-system, sans-serif;
   --font-deva: 'Noto Sans Devanagari', 'Inter', system-ui, sans-serif;
 }
 
