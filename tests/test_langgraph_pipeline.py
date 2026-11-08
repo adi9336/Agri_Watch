@@ -56,7 +56,7 @@ class TestAgriWatchLangGraph(unittest.TestCase):
         out = self.graph.invoke(state)
         resp = out.get("spoken_hindi_response", "")
         # Must state the official 2026-27 MSP rate
-        self.assertTrue("2275" in resp or "2,275" in resp)
+        self.assertTrue("2585" in resp or "2,585" in resp)
 
     def test_continuation_does_not_loop(self):
         # First turn: Wheat inquiry
