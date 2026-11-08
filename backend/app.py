@@ -41,6 +41,7 @@ from agents.tools import (
     CROP_NORM_MAP
 )
 from mandi_tracker import load_env
+from agents.i18n import LANGUAGES, normalize_language
 
 logger = logging.getLogger("agriwatch.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -70,6 +71,7 @@ graph = get_agriwatch_graph()
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User query in Hindi or Hinglish", example="झांसी में गेहूं का भाव क्या है?")
     session_context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Session state carryover")
+    language: Optional[str] = Field("hi-IN", description="Reply language (BCP-47), e.g. hi-IN, ta-IN")
 
 
 class ChatResponse(BaseModel):
@@ -83,6 +85,7 @@ class TokenRequest(BaseModel):
     room: Optional[str] = Field("agri-room-1", description="LiveKit room name")
     identity: Optional[str] = Field(None, description="Unique participant identity")
     name: Optional[str] = Field("किसान भाई", description="Display name of user")
+    language: Optional[str] = Field("hi-IN", description="Farmer language (BCP-47)")
 
 
 class TokenResponse(BaseModel):
@@ -120,7 +123,7 @@ def health_check():
     }
 
 
-def _create_token(room: str, identity: Optional[str], name: str) -> TokenResponse:
+def _create_token(room: str, identity: Optional[str], name: str, language: str = "hi-IN") -> TokenResponse:
     env = load_env()
     server_url = env.get("LIVEKIT_URL", "")
     if not server_url:
@@ -130,7 +133,7 @@ def _create_token(room: str, identity: Optional[str], name: str) -> TokenRespons
         )
     user_id = identity or f"farmer-{uuid.uuid4().hex[:6]}"
     try:
-        jwt_token = generate_participant_token(room_name=room, identity=user_id, name=name)
+        jwt_token = generate_participant_token(room_name=room, identity=user_id, name=name, language=normalize_language(language))
         return TokenResponse(
             serverUrl=server_url,
             room=room,
@@ -146,10 +149,11 @@ def _create_token(room: str, identity: Optional[str], name: str) -> TokenRespons
 def get_livekit_token(
     room: str = Query("agri-room-1", description="LiveKit room name"),
     identity: Optional[str] = Query(None, description="Unique participant identity"),
-    name: str = Query("किसान भाई", description="Display name of user")
+    name: str = Query("किसान भाई", description="Display name of user"),
+    language: str = Query("hi-IN", description="Farmer language (BCP-47)")
 ):
     """Generates a WebRTC participant JWT access token via GET query params."""
-    return _create_token(room=room, identity=identity, name=name)
+    return _create_token(room=room, identity=identity, name=name, language=language)
 
 
 @app.post("/api/token", response_model=TokenResponse)
@@ -158,7 +162,8 @@ def post_livekit_token(payload: TokenRequest):
     return _create_token(
         room=payload.room or "agri-room-1",
         identity=payload.identity,
-        name=payload.name or "किसान भाई"
+        name=payload.name or "किसान भाई",
+        language=payload.language or "hi-IN"
     )
 
 
@@ -175,6 +180,7 @@ def chat_endpoint(payload: ChatRequest):
     try:
         state_input = {
             "user_query": query,
+            "language": normalize_language(payload.language),
             "session_context": payload.session_context or {}
         }
         output = graph.invoke(state_input)
@@ -207,11 +213,10 @@ def get_price_endpoint(
 def get_arbitrage_endpoint(
     crop: str = Query(..., description="Crop name"),
     district: str = Query(..., description="Base district or Mandi name"),
-    state: Optional[str] = Query(None, description="State"),
-    quantity_quintals: float = Query(25.0, description="Transport harvest quantity in quintals")
+    state: Optional[str] = Query(None, description="State")
 ):
-    """Direct API for multi-mandi transport arbitrage and profit ranking."""
-    raw_res = compare_mandi_arbitrage(crop=crop, district=district, state=state, quantity_quintals=quantity_quintals)
+    """Direct API for the 5 nearest mandis reporting a crop, sorted by rate."""
+    raw_res = compare_mandi_arbitrage(crop=crop, district=district, state=state)
     return json.loads(raw_res)
 
 
@@ -252,7 +257,9 @@ def get_metadata():
         "कल्याण मंडी में चने का क्या भाव चल रहा है?",
         "गेहूँ का सरकारी समर्थन मूल्य (MSP) कितना है?"
     ]
+    languages = [{"code": code, "name": v["name"], "native": v["native"]} for code, v in LANGUAGES.items()]
     return {
+        "languages": languages,
         "crops": popular_crops,
         "mandis": popular_mandis,
         "suggestions": suggested_questions

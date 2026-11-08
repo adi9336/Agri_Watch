@@ -42,6 +42,7 @@ from agents.graph import get_agriwatch_graph
 from agents.state import AgentState
 from agents.observability import traceable
 from agents.llm_adapter import AgriWatchLangGraphLLM
+from agents.i18n import normalize_language, stt_language, t
 
 logger = logging.getLogger("agriwatch-worker")
 logging.basicConfig(level=logging.INFO)
@@ -86,8 +87,9 @@ class AgriWatchVoiceAgent(Agent):
     Enhanced Voice Agent with sub-150ms Indic backchanneling and acoustic pre-responses.
     Configured with use_tts_aligned_transcript=True for strict LLM context alignment on interruption.
     """
-    def __init__(self, instructions: str, llm: Any):
+    def __init__(self, instructions: str, llm: Any, language: str = "hi-IN"):
         super().__init__(instructions=instructions, llm=llm, use_tts_aligned_transcript=True)
+        self.language = language
 
     async def on_user_turn_completed(self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage):
         """Fires immediately when STT finishes, before the cognitive LLM reasoning finishes."""
@@ -108,14 +110,14 @@ class AgriWatchVoiceAgent(Agent):
 
         # For heavy temporal, holding ROI, or multi-mandi comparisons, speak an instant acoustic filler
         if any(w in text for w in ("रोक कर", "रोककर", "वेयरहाउस", "गोदाम", "पूरा हिसाब", "स्टोर")):
-            filler = "जी किसान भाई, मैं वेयरहाउस और मुनाफे का पूरा हिसाब जोड़ रहा हूँ..."
+            filler = t(self.language, "filler_specialist")
             logger.info(f"[*] Emitting specialist pre-response filler: '{filler}'")
             try:
                 self.session.say(filler, add_to_chat_ctx=False)
             except Exception as e:
                 logger.warning(f"[!] Filler emit notice: {e}")
         elif any(w in text for w in ("आसपास", "दूसरी मंडी", "कहाँ बेचूँ", "मुनाफा", "महीने", "महीना", "हफ्ते", "हफ्ता", "रुझान", "दिन के हिसाब")):
-            filler = "जी किसान भाई, मैं पूरा रिकॉर्ड देख रहा हूँ..."
+            filler = t(self.language, "filler_lookup")
             logger.info(f"[*] Emitting acoustic pre-response filler: '{filler}'")
             try:
                 self.session.say(filler, add_to_chat_ctx=False)
@@ -140,8 +142,8 @@ class AgriWatchVoiceAssistant:
         # Load Gnani Speech Plugins (use_streaming=False uses local Silero VAD to eliminate 60s idle socket drops)
         gnani_key = os.getenv("GNANI_API_KEY")
         if gnani_key:
-            self.stt = gnani.STT(language=self.language, sample_rate=16000, api_key=gnani_key, use_streaming=False)
-            self.tts = gnani.TTS(model="timbre-v2.5", voice="Pranav", sample_rate=16000, api_key=gnani_key)
+            self.stt = gnani.STT(language=stt_language(self.language), sample_rate=16000, api_key=gnani_key, use_streaming=False)
+            self.tts = gnani.TTS(model="timbre-v2.5", voice="Pranav", language=self.language, sample_rate=16000, api_key=gnani_key)
         else:
             logger.warning("[!] GNANI_API_KEY not found in .env; running in simulated audio mode.")
             self.stt = None
@@ -170,16 +172,22 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to LiveKit room: {ctx.room.name}")
     await ctx.connect()
 
+    # Language picked by the farmer in the web app (token attribute); defaults to Hindi
+    participant = await ctx.wait_for_participant()
+    language = normalize_language(participant.attributes.get("language"))
+    logger.info(f"[*] Farmer language: {language}")
+
     cached_vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") and ctx.proc else None
-    assistant_engine = AgriWatchVoiceAssistant(language="hi-IN", vad=cached_vad)
-    agri_llm = AgriWatchLangGraphLLM(graph=assistant_engine.graph)
+    assistant_engine = AgriWatchVoiceAssistant(language=language, vad=cached_vad)
+    agri_llm = AgriWatchLangGraphLLM(graph=assistant_engine.graph, language=language)
 
     agent = AgriWatchVoiceAgent(
         instructions=(
             "आप एग्री-वॉच हैं - भारतीय किसानों और ग्रामीण व्यापारियों के लिए आधिकारिक "
             "मंडी मूल्य और आर्बिट्रेज सलाहकार। सदैव सरल, सम्मानजनक और सटीक हिंदी में बोलें।"
         ),
-        llm=agri_llm
+        llm=agri_llm,
+        language=language
     )
 
     # Modern voice turn handling: adaptive barge-in, false-interruption resumption, and background noise filtering
@@ -212,13 +220,13 @@ async def entrypoint(ctx: JobContext):
         try:
             for attempt in range(2):
                 await asyncio.sleep(12)
-                ping_msg = "किसान भाई, क्या आप किसी अन्य मंडी का भाव जानना चाहते हैं, या कोई और सहायता करूँ?"
+                ping_msg = t(language, "inactivity_ping")
                 logger.info(f"[*] Inactivity check {attempt + 1}: Prompting user.")
                 await session.say(ping_msg)
             
             # Second timeout without response -> graceful farewell
             await asyncio.sleep(10)
-            farewell = "किसान भाई, कोई आवाज़ नहीं आ रही है। यदि आपको पुनः भाव जानना हो तो दोबारा जुड़ें। राम राम!"
+            farewell = t(language, "farewell")
             logger.info("[*] Inactivity limit reached: Initiating graceful disconnect.")
             await session.say(farewell, allow_interruptions=False)
             await asyncio.sleep(3)
@@ -249,7 +257,7 @@ async def entrypoint(ctx: JobContext):
     await session.start(agent, room=ctx.room)
 
     # Initial Indic greeting
-    greeting = "नमस्ते किसान भाई! मैं एग्री-वॉच हूँ। आप किस फसल या मंडी का भाव जानना चाहते हैं?"
+    greeting = t(language, "greeting")
     logger.info(f"Sending Greeting: {greeting}")
     await session.say(greeting)
 

@@ -9,6 +9,7 @@ import re
 from typing import Dict, Any, Optional
 from agents.state import AgentState
 from agents.observability import traceable
+from agents.i18n import GREETING_WORDS, t
 
 # -------------------------------------------------------------
 # Agri_watch - Scope & Conversational Fast-Path Guardrail
@@ -23,7 +24,6 @@ OFF_TOPIC_PATTERNS = {
     "क्रिकेट", "मैच", "चुनाव", "राजनीति", "cricket", "election", "politics"
 }
 
-GREETING_WORDS = {"नमस्ते", "नमस्कार", "राम राम", "राम-राम", "प्रणाम", "हेलो", "hello", "hi", "hey"}
 AFFIRMATION_WORDS = {
     "हाँ", "हां", "ठीक", "ठीक है", "अच्छा", "ok", "okay", "theek", "theek hai",
     "ओके", "राइट", "ओके राइट", "सही", "सही है", "अच्छा जी", "हाँजी", "जी", "शुक्रिया", "धन्यवाद"
@@ -42,6 +42,7 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
     query = state.get("user_query", "").strip()
     q_lower = query.lower()
     session_ctx = state.get("session_context") or {}
+    language = state.get("language")
 
     # 1. Scope Guardrail: Off-Topic / Out of Scope Check (Tokenized boundary check)
     tokens = set(re.split(r'[\s,।!?;:()"\'-]+', q_lower))
@@ -49,7 +50,7 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
         return {
             "intent": "OFF_TOPIC",
             "status": "fast_exit",
-            "spoken_hindi_response": "किसान भाई, मैं केवल कृषि मंडी भाव, मंडियों के मुनाफे की तुलना और सरकारी MSP का सलाहकार हूँ। कृपया मंडी भाव से जुड़ा प्रश्न पूछें।",
+            "spoken_hindi_response": t(language, "off_topic"),
             "session_context": session_ctx
         }
 
@@ -59,7 +60,7 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
         return {
             "intent": "CONTINUATION",
             "status": "fast_exit",
-            "spoken_hindi_response": "जी भाई! क्या आप किसी अन्य फसल या दूसरी मंडी का भाव जानना चाहते हैं?",
+            "spoken_hindi_response": t(language, "continuation"),
             "session_context": session_ctx
         }
 
@@ -68,7 +69,7 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
         return {
             "intent": "GREETING",
             "status": "fast_exit",
-            "spoken_hindi_response": "राम राम किसान भाई! बताइए, आप किस फसल या मंडी का भाव जानना चाहते हैं?",
+            "spoken_hindi_response": t(language, "greet_reply"),
             "session_context": session_ctx
         }
 

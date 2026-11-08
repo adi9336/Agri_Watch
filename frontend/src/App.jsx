@@ -8,10 +8,16 @@ import { useLiveKitVoice } from './useLiveKitVoice';
 import AIOrbCSS from './components/AIOrbCSS';
 
 const quickQueries = ['गेहूं का आज का भाव', 'चना MSP कितना है?', 'कल्याण मंडी में भाव'];
+const languages = [
+  ['hi-IN', 'हिन्दी'], ['en-IN', 'English'], ['mr-IN', 'मराठी'], ['bn-IN', 'বাংলা'], ['gu-IN', 'ગુજરાતી'],
+  ['kn-IN', 'ಕನ್ನಡ'], ['ml-IN', 'മലയാളം'], ['pa-IN', 'ਪੰਜਾਬੀ'], ['ta-IN', 'தமிழ்'], ['te-IN', 'తెలుగు']
+];
+const readSavedLanguage = () => { try { return localStorage.getItem('agriwatch-language') || 'hi-IN'; } catch { return 'hi-IN'; } };
 
 export default function App() {
   const { status, isAgentSpeaking, isUserSpeaking, volume, error: voiceError, connect, disconnect } = useLiveKitVoice();
   const [activeTab, setActiveTab] = useState('overview');
+  const [language, setLanguage] = useState(readSavedLanguage);
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState([{ role: 'assistant', text: 'नमस्ते किसान भाई! फसल और मंडी का नाम बोलें या लिखें — मैं आज का भाव, MSP और आसपास की मंडियों में मुनाफा बताऊंगा।', time: 'अभी' }]);
   const [sessionContext, setSessionContext] = useState({});
@@ -22,6 +28,12 @@ export default function App() {
   const orbState = status === 'connecting' || isTyping ? 'thinking' : status === 'connected' ? (isAgentSpeaking ? 'speaking' : 'listening') : 'idle';
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
+
+  const changeLanguage = (code) => {
+    setLanguage(code);
+    try { localStorage.setItem('agriwatch-language', code); } catch {}
+    if (status === 'connected' || status === 'connecting') disconnect();  // voice session is per-language
+  };
 
   const fetchPriceCard = async (crop, district) => {
     try {
@@ -38,7 +50,7 @@ export default function App() {
     if (!customText) setInputText('');
     setIsTyping(true);
     try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, session_context: sessionContext }) });
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, session_context: sessionContext, language }) });
       const data = await res.json();
       setSessionContext(data.session_context || {});
       setMessages(prev => [...prev, { role: 'assistant', text: data.response, intent: data.intent, time: new Date().toLocaleTimeString('hi-IN', { hour: '2-digit', minute: '2-digit' }) }]);
@@ -48,14 +60,14 @@ export default function App() {
     } finally { setIsTyping(false); }
   };
 
-  const handleVoiceToggle = () => status === 'connected' || status === 'connecting' ? disconnect() : connect('agri-room-1');
+  const handleVoiceToggle = () => status === 'connected' || status === 'connecting' ? disconnect() : connect('agri-room-1', language);
 
   return (
     <div className="app-shell">
       <div className="ambient ambient-one" /><div className="ambient ambient-two" />
       <header className="topbar">
         <div className="brand"><div className="brand-mark"><Wheat size={18} /></div><div><strong>Agri<span>Watch</span></strong><small>कृषि वॉयस इंटेलिजेंस</small></div></div>
-        <div className="topbar-meta"><div className="live-indicator"><span /> सिस्टम सक्रिय</div><div className="weather"><CloudSun size={16} /> 28° <span>भोपाल</span></div><button className="icon-button" aria-label="सूचनाएं"><Bell size={17} /></button><button className="avatar" aria-label="प्रोफाइल">AK</button></div>
+        <div className="topbar-meta"><select className="language-select" value={language} onChange={e => changeLanguage(e.target.value)} aria-label="भाषा / Language">{languages.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select><div className="live-indicator"><span /> सिस्टम सक्रिय</div><div className="weather"><CloudSun size={16} /> 28° <span>भोपाल</span></div><button className="icon-button" aria-label="सूचनाएं"><Bell size={17} /></button><button className="avatar" aria-label="प्रोफाइल">AK</button></div>
       </header>
 
       <div className="workspace">

@@ -11,6 +11,7 @@ class AgentState(TypedDict, total=False):
     # Turn Info
     turn_id: int
     user_query: str
+    language: str                # BCP-47 code chosen by the farmer, e.g. "hi-IN", "ta-IN"
 
     # Extracted Entities
     crop: Optional[str]

@@ -24,6 +24,7 @@ from agents.tools import (
     consult_economic_specialist
 )
 from agents.state import AgentState
+from agents.i18n import LANGUAGES, normalize_language, t
 from agents.observability import traceable
 
 logger = logging.getLogger("agriwatch.reasoner")
@@ -123,11 +124,14 @@ TOOL_MAP = {t.name: t for t in LANGCHAIN_TOOLS}
 
 # 2. Strict Voice Agent System Prompt
 SYSTEM_PROMPT = """You are Agri-Watch, a voice assistant for Indian farmers. Your reply is spoken aloud by TTS.
-ALWAYS reply in simple Hindi (Devanagari), 1-2 short sentences, starting with "किसान भाई,". No markdown, bullets or emojis. Say prices as "₹X प्रति क्विंटल".
+ALWAYS reply in simple {language_name} ({language_native} script), 1-2 short sentences, starting with "{address},". No markdown, bullets or emojis. Say prices as "₹X" per quintal in {language_name}. Tool summaries (companion_summary_hi) are in Hindi: translate them into {language_name}; keep mandi names recognisable.
+ALWAYS pass crop and place names to tools in English (e.g. crop='Wheat', district_or_mandi='Jhansi'), whatever language the farmer speaks.
+DATE RULE (critical): if a tool result has is_today=false, you MUST say the reporting_date in the answer and must NOT call it today's rate.
+If the farmer asks about anything other than mandi prices, nearby mandis, MSP, price trends or storage, politely say you only help with these.
 
 TOOLS (answer only what was asked; never add MSP or other mandis unprompted):
 - Price of a crop at a mandi/district -> get_crop_price_tool. Pass the spoken place name as-is in district_or_mandi (e.g. Rath, Mauranipur, Jhansi); the system resolves districts, so never ask for the district if a mandi/town was named. Always pass date: 'today' if none said, 'yesterday' for कल, or the given date.
-- Where to sell / nearby or other mandis / compare -> compare_mandi_arbitrage_tool. Name the top 2-3 mandis with prices (you may use companion_summary_hi). Never say "no mandi found" if the tool returned prices.
+- Where to sell / nearby or other mandis / compare -> compare_mandi_arbitrage_tool. It returns the 5 nearest mandis sorted by rate; read them out with approx km (you may use companion_summary_hi). Never estimate transport cost or profit. Never say "no mandi found" if the tool returned prices.
 - MSP / सरकारी भाव -> check_msp_floor_tool.
 - Rising/falling, trend, past week/month prices -> get_crop_price_trend_tool. Give the range and overall change.
 - Hold vs sell now, warehouse cost, vehicle/freight full calculation -> consult_economic_specialist_tool; summarise its companion_summary_hi.
@@ -135,8 +139,9 @@ TOOLS (answer only what was asked; never add MSP or other mandis unprompted):
 MISSING INFO: Place but no crop (and none in session context) -> ask which crop, no tool. Crop but no place (and none in context) -> ask for district or mandi, no tool.
 FOLLOW-UPS: Fill anything missing from [सत्र संदर्भ] (active crop/district). Never re-ask a crop that is already in context. E.g. after "Lucknow chana", "और गेहूं?" = wheat in Lucknow; "और कटनी में?" = same crop in Katni; "आसपास की मंडी?" = compare tool with the context crop.
 
+MSP WARNING: If a price/compare tool returns below_msp=true, add one short sentence: the rate is ₹msp_gap_per_quintal below the MSP of ₹msp, so consider selling at a government procurement centre. Do not name a specific centre.
 NO HALLUCINATION: Use only modal_price and dates returned by tools. If status is not_found, say the price is not in the official record for that place/date. Never invent prices or dates.
-DATES: is_today=true -> "आज [मंडी] में [फसल] का भाव ₹X प्रति क्विंटल है". Asked today but is_exact_date=false -> say today's rate is not yet recorded and give the reporting_date price. Asked another date and is_exact_date=false -> say that date is unavailable and give the nearest reporting_date price. For compare results with is_today=false, mention the reporting_date of the best mandi.
+DATES: is_today=true -> say it is today's rate at that mandi. Asked today but is_exact_date=false -> say today's rate is not yet recorded and give the reporting_date price. Asked another date and is_exact_date=false -> say that date is unavailable and give the nearest reporting_date price. For compare results with is_today=false, mention the reporting_date of the best mandi.
 """
 
 _active_groq_model: Optional[str] = None
@@ -224,7 +229,12 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
         context_parts.append(f"सक्रिय_जिला={session_ctx['district']}")
     context_hint = f"\n[सत्र संदर्भ: {', '.join(context_parts)}]" if context_parts else ""
 
-    messages = [SystemMessage(content=SYSTEM_PROMPT + context_hint)]
+    language = normalize_language(state.get("language"))
+    lang_info = LANGUAGES[language]
+    system_prompt = SYSTEM_PROMPT.format(
+        language_name=lang_info["name"], language_native=lang_info["native"], address=lang_info["address"]
+    )
+    messages = [SystemMessage(content=system_prompt + context_hint)]
     # Feed recent conversational context (up to last 6 turns), filtering empty content
     for msg in chat_history[-4:]:
         role = msg.get("role")
@@ -286,9 +296,7 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
             final_ai_msg: AIMessage = llm.invoke(messages)
             spoken_response = (final_ai_msg.content or "").strip()
             if not spoken_response:
-                crop_lbl = detected_crop or updated_ctx.get("crop", "")
-                dist_lbl = detected_dist or updated_ctx.get("district", "")
-                spoken_response = f"किसान भाई, {dist_lbl} मंडी में {crop_lbl} का भाव दर्ज कर लिया गया है।"
+                spoken_response = t(language, "retry")
 
             # Record turn in persistent history
             updated_history = list(chat_history)
@@ -309,14 +317,14 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
         spoken_response = (ai_msg.content or "").strip()
         if not spoken_response:
             logger.warning("[!] LLM returned empty response without tool calls, applying safety response.")
-            spoken_response = "किसान भाई, कृपया अपना प्रश्न दोबारा बोलें, मैं सही भाव पता करके बताता हूँ।"
+            spoken_response = t(language, "retry")
 
         updated_history = list(chat_history)
         updated_history.append({"role": "user", "content": query})
         updated_history.append({"role": "assistant", "content": spoken_response})
         session_ctx["chat_history"] = updated_history[-6:]
 
-        is_clarification = any(w in spoken_response for w in ["फसल", "जिला", "मंडी", "बताइए", "चाहते हैं"])
+        is_clarification = spoken_response.rstrip().endswith("?") or any(w in spoken_response for w in ["फसल", "जिला", "मंडी", "बताइए", "चाहते हैं"])
         detected_intent = "CLARIFICATION" if is_clarification else "CONVERSATION"
 
         return {

@@ -12,6 +12,7 @@ from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
 
 from agents.graph import get_agriwatch_graph
 from agents.state import AgentState
+from agents.i18n import normalize_language, t
 from agents.observability import traceable
 
 logger = logging.getLogger("agriwatch.llm")
@@ -40,6 +41,7 @@ class LangGraphLLMStream(llm.LLMStream):
         state_input: AgentState = {
             "turn_id": self._llm.turn_counter,
             "user_query": user_query,
+            "language": self._llm.language,
             "session_context": self._llm.session_context
         }
 
@@ -48,7 +50,7 @@ class LangGraphLLMStream(llm.LLMStream):
         self._llm.session_context = result.get("session_context") or {}
         spoken_response = (result.get("spoken_hindi_response") or "").strip()
         if not spoken_response:
-            spoken_response = "किसान भाई, कृपया अपना प्रश्न दोबारा बोलें, मैं सही भाव पता करके बताता हूँ।"
+            spoken_response = t(self._llm.language, "retry")
 
         logger.info(f"[+] LangGraphLLMStream: Emitting response (Intent: {result.get('intent')}): '{spoken_response}'")
 
@@ -65,9 +67,10 @@ class AgriWatchLangGraphLLM(llm.LLM):
     Conforms to LiveKit Agents v1.8+ llm.LLM protocol, delegating cognitive reasoning
     and multi-agent routing to the compiled LangGraph harness.
     """
-    def __init__(self, graph=None):
+    def __init__(self, graph=None, language: str = "hi-IN"):
         super().__init__()
         self.graph = graph or get_agriwatch_graph()
+        self.language = normalize_language(language)
         self.session_context: Dict[str, Any] = {}
         self.turn_counter: int = 0
 

@@ -1,17 +1,19 @@
 {
+  "_source": "Rabi: RMS 2026-27 (Cabinet, 1 Oct 2025). Kharif: KMS 2026-27 (Cabinet, 13 May 2026). Rs per quintal.",
   "2026_27": {
-    "Paddy(Common)": { "msp": 2300, "season": "Kharif", "name_hi": "धान (सामान्य)" },
-    "Paddy(Basmati)": { "msp": 2320, "season": "Kharif", "name_hi": "धान (बासमती)" },
-    "Wheat": { "msp": 2275, "season": "Rabi", "name_hi": "गेहूँ" },
-    "Barley(Jau)": { "msp": 1850, "season": "Rabi", "name_hi": "जौ" },
-    "Gram Raw(Chholia)": { "msp": 5440, "season": "Rabi", "name_hi": "चना" },
-    "Gram(Whole)": { "msp": 5440, "season": "Rabi", "name_hi": "चना" },
-    "Masur Dal": { "msp": 6425, "season": "Rabi", "name_hi": "मसूर" },
-    "Mustard": { "msp": 5650, "season": "Rabi", "name_hi": "सरसों" },
-    "Maize": { "msp": 2090, "season": "Kharif", "name_hi": "मक्का" },
-    "Groundnut": { "msp": 6783, "season": "Kharif", "name_hi": "मूंगफली" },
-    "Soyabean": { "msp": 4892, "season": "Kharif", "name_hi": "सोयाबीन" },
-    "Green Gram(Moong)(Whole)": { "msp": 8558, "season": "Kharif", "name_hi": "मूँग" }
+    "Gram(Whole)": { "msp": 5875, "season": "Rabi", "name_hi": "चना" },
+    "Wheat": { "msp": 2585, "season": "Rabi", "name_hi": "गेहूँ" },
+    "Barley(Jau)": { "msp": 2150, "season": "Rabi", "name_hi": "जौ" },
+    "Masur Dal(Lentil)": { "msp": 7000, "season": "Rabi", "name_hi": "मसूर" },
+    "Mustard": { "msp": 6200, "season": "Rabi", "name_hi": "सरसों" },
+    "Safflower": { "msp": 6540, "season": "Rabi", "name_hi": "कुसुम" },
+    "Paddy(Common)": { "msp": 2441, "season": "Kharif", "name_hi": "धान (सामान्य)" },
+    "Paddy(Grade A)": { "msp": 2461, "season": "Kharif", "name_hi": "धान (ग्रेड ए)" },
+    "Maize": { "msp": 2410, "season": "Kharif", "name_hi": "मक्का" },
+    "Arhar(Tur/Red Gram)": { "msp": 8450, "season": "Kharif", "name_hi": "अरहर" },
+    "Green Gram(Moong)(Whole)": { "msp": 8780, "season": "Kharif", "name_hi": "मूँग" },
+    "Black Gram(Urad)": { "msp": 8200, "season": "Kharif", "name_hi": "उड़द" },
+    "Groundnut": { "msp": 7517, "season": "Kharif", "name_hi": "मूंगफली" },
+    "Soyabean": { "msp": 5708, "season": "Kharif", "name_hi": "सोयाबीन" }
   }
 }
-

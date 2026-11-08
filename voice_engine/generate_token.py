@@ -16,7 +16,7 @@ if PARENT_DIR not in sys.path:
 from mandi_tracker import load_env
 
 
-def generate_participant_token(room_name: str = "agri-room-1", identity: str = "farmer-1", name: str = "Farmer User") -> str:
+def generate_participant_token(room_name: str = "agri-room-1", identity: str = "farmer-1", name: str = "Farmer User", language: str = "hi-IN") -> str:
     env = load_env()
     api_key = env.get("LIVEKIT_API_KEY")
     api_secret = env.get("LIVEKIT_API_SECRET")
@@ -28,6 +28,7 @@ def generate_participant_token(room_name: str = "agri-room-1", identity: str = "
         api.AccessToken(api_key=api_key, api_secret=api_secret)
         .with_identity(identity)
         .with_name(name)
+        .with_attributes({"language": language})
         .with_grants(api.VideoGrants(room_join=True, room=room_name))
         .with_room_config(api.RoomConfiguration(
             agents=[api.RoomAgentDispatch(agent_name="agri_watch")]))

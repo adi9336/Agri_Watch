@@ -9,6 +9,7 @@ from typing import Dict, Any
 from agents.state import AgentState
 from agents.tools import get_crop_price, check_msp_floor, CROP_NORM_MAP, DISTRICT_NORM_MAP
 from agents.observability import traceable
+from agents.i18n import normalize_language, t
 
 HINDI_CROP_NAMES = {
     "Wheat": "गेहूँ",
@@ -26,6 +27,7 @@ def fallback_node(state: AgentState) -> Dict[str, Any]:
     """Fallback handler when cloud LLM is temporarily unavailable."""
     query = state.get("user_query", "").lower()
     session_ctx = state.get("session_context") or {}
+    language = normalize_language(state.get("language"))
 
     # Extract crop
     crop = None
@@ -39,13 +41,13 @@ def fallback_node(state: AgentState) -> Dict[str, Any]:
     if not has_crop and not session_ctx.get("crop"):
         return {
             "intent": "CLARIFICATION",
-            "spoken_hindi_response": "किसान भाई, आप किस फसल का भाव जानना चाहते हैं?",
+            "spoken_hindi_response": t(language, "ask_crop"),
             "status": "clarification",
             "session_context": session_ctx
         }
 
     crop = crop or session_ctx.get("crop", "Wheat")
-    hindi_crop = HINDI_CROP_NAMES.get(crop, crop)
+    hindi_crop = HINDI_CROP_NAMES.get(crop, crop) if language == "hi-IN" else crop
 
     # Extract district
     district = "Jhansi"
@@ -61,7 +63,7 @@ def fallback_node(state: AgentState) -> Dict[str, Any]:
         msp_rate = data.get("msp_rate_per_quintal", 2275)
         return {
             "intent": "MSP",
-            "spoken_hindi_response": f"किसान भाई, {hindi_crop} का सरकारी समर्थन मूल्य ₹{msp_rate} प्रति क्विंटल है।",
+            "spoken_hindi_response": t(language, "msp", crop=hindi_crop, price=msp_rate),
             "status": "success",
             "session_context": session_ctx
         }
@@ -77,7 +79,7 @@ def fallback_node(state: AgentState) -> Dict[str, Any]:
     updated_ctx["district"] = district
     return {
         "intent": "PRICE",
-        "spoken_hindi_response": f"किसान भाई, {market} मंडी में {hindi_crop} का भाव ₹{modal:.0f} प्रति क्विंटल रहा है।",
+        "spoken_hindi_response": t(language, "price", market=market, crop=hindi_crop, price=f"{modal:.0f}"),
         "status": "success",
         "crop": crop,
         "district": district,

@@ -33,13 +33,13 @@ export function useLiveKitVoice() {
     };
   }, []);
 
-  const connect = useCallback(async (roomName = 'agri-room-1') => {
+  const connect = useCallback(async (roomName = 'agri-room-1', language = 'hi-IN') => {
     try {
       setStatus('connecting');
       setError(null);
 
       // 1. Fetch WebRTC participant access token from FastAPI
-      const res = await fetch(`/api/token?room=${encodeURIComponent(roomName)}`);
+      const res = await fetch(`/api/token?room=${encodeURIComponent(roomName)}&language=${encodeURIComponent(language)}`);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `Token request failed with status ${res.status}`);

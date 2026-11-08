@@ -361,190 +361,215 @@ def get_crop_price(
         "is_exact_date": is_exact_match,
         "is_today": is_live or (reporting_date == today_str),
         "date_note": date_note,
-        "verified_rate_rs_per_quintal": f"₹{modal_p:.0f}"
+        "verified_rate_rs_per_quintal": f"₹{modal_p:.0f}",
+        **msp_comparison(norm_crop, modal_p)
     }, ensure_ascii=False)
 
 
 # -------------------------------------------------------------------------
-# Tool 2: Compare Mandi Arbitrage (Only when asked where to sell / comparison)
+# Tool 2: Nearest Mandis Comparison (Only when asked where to sell / nearby mandis)
 # -------------------------------------------------------------------------
-@traceable(name="ArbitrageEngine:compare_mandi_arbitrage", run_type="tool")
+DISTRICT_COORDS_PATH = os.path.join(PARENT_DIR, "data", "district_coords.json")
+NEARBY_RADIUS_KM = 150      # Candidate search radius around the farmer's mandi
+NEAREST_MANDI_COUNT = 5     # Mandis read out to the farmer
+RECENT_WINDOW_DAYS = 60     # Prefer mandi rates reported within this many days
+ROAD_FACTOR = 1.3           # Straight-line distance -> approximate road distance
+_DISTRICT_COORDS: Optional[Dict[str, Dict[str, float]]] = None
+
+
+def _district_key(district: str, state: str) -> str:
+    return f"{(district or '').strip().lower()}|{(state or '').strip().lower()}"
+
+
+def _load_district_coords() -> Dict[str, Dict[str, float]]:
+    global _DISTRICT_COORDS
+    if _DISTRICT_COORDS is None:
+        _DISTRICT_COORDS = {}
+        if os.path.exists(DISTRICT_COORDS_PATH):
+            with open(DISTRICT_COORDS_PATH, "r", encoding="utf-8") as f:
+                _DISTRICT_COORDS = json.load(f)
+    return _DISTRICT_COORDS
+
+
+def _road_km(a: Dict[str, float], b: Dict[str, float]) -> float:
+    """Approximate road distance between two district centroids (haversine x road factor)."""
+    from math import radians, sin, cos, asin, sqrt
+    lat1, lon1, lat2, lon2 = map(radians, (a["lat"], a["lon"], b["lat"], b["lon"]))
+    h = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
+    return 2 * 6371 * asin(sqrt(h)) * ROAD_FACTOR
+
+
+def _nearby_districts(district: str, state: str) -> Dict[str, float]:
+    """Maps district|state keys within NEARBY_RADIUS_KM of the origin to their approximate road km."""
+    coords = _load_district_coords()
+    origin = coords.get(_district_key(district, state))
+    if not origin:
+        # No centroid for the origin: fall back to the curated neighbour list (distance unknown)
+        names = [district] + NEIGHBORING_DISTRICTS.get(district, [])
+        return {k: None for k in coords if k.split("|")[0] in {n.lower() for n in names}} or \
+            {_district_key(n, state): None for n in names}
+    nearby = {}
+    for key, point in coords.items():
+        km = _road_km(origin, point)
+        if km <= NEARBY_RADIUS_KM:
+            nearby[key] = km
+    return nearby
+
+
+def _parse_arrival_date(d_str: str) -> datetime:
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime((d_str or "").strip(), fmt)
+        except ValueError:
+            pass
+    return datetime.min
+
+
+@traceable(name="NearbyMandis:compare_mandi_arbitrage", run_type="tool")
 def compare_mandi_arbitrage(
     crop: str,
     district: str,
-    state: Optional[str] = None,
-    quantity_quintals: float = 25.0
+    state: Optional[str] = None
 ) -> str:
     """
-    Compare commodity prices across multiple APMC mandis within a district or neighboring regional cluster
-    to find the highest-paying market, list nearby mandis with verified rates, and calculate transport net profit.
-    Call this when a farmer asks where to sell, asks for higher profit, or asks about nearby/other mandis.
+    Lists the 5 mandis nearest to the farmer's mandi/district that recently reported the crop,
+    sorted by rate (highest first). Transport cost is deliberately not estimated.
+    Call this when a farmer asks where to sell or about nearby/other mandis.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
     resolved_dist, resolved_market, resolved_state = resolve_location(district, state)
-    cluster_districts = [resolved_dist] + NEIGHBORING_DISTRICTS.get(resolved_dist, [])
-    cluster_lower = {d.lower() for d in cluster_districts}
+    nearby = _nearby_districts(resolved_dist, resolved_state)
+    nearby_names = {k.split("|")[0] for k in nearby}
 
-    market_latest = {}
-    today_str = datetime.now().strftime("%d/%m/%Y")
+    def _distance_for(r_dist: str, r_state: str) -> Optional[float]:
+        key = _district_key(r_dist, r_state)
+        if key in nearby:
+            return nearby[key]
+        # State names occasionally differ between datasets; fall back to district name only
+        return next((km for k, km in nearby.items() if k.split("|")[0] == r_dist.strip().lower()), None)
 
-    def _parse_d(d_str: str) -> datetime:
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
-            try:
-                return datetime.strptime(d_str.strip(), fmt)
-            except Exception:
-                pass
-        return datetime.min
+    market_latest: Dict[str, Dict[str, Any]] = {}
 
-    # 1. Try live data.gov.in API for target district if available
+    def _consider(row: Dict[str, Any]):
+        r_dist = (row.get("district") or "").strip()
+        if r_dist.lower() not in nearby_names or not is_commodity_match(norm_crop, row.get("commodity", "")):
+            return
+        m_clean = clean_market_name(row.get("market", ""))
+        try:
+            modal = float(row.get("modal_price", 0))
+        except (ValueError, TypeError):
+            return
+        if not m_clean or modal <= 0:
+            return
+        r_date = (row.get("arrival_date") or "").strip()
+        prev = market_latest.get(m_clean)
+        if prev is None or _parse_arrival_date(r_date) > _parse_arrival_date(prev["arrival_date"]):
+            km = _distance_for(r_dist, row.get("state", ""))
+            market_latest[m_clean] = {
+                "market": m_clean,
+                "market_hi": MARKET_HI_MAP.get(m_clean, m_clean + " मंडी"),
+                "district": r_dist,
+                "modal_price": modal,
+                "arrival_date": r_date,
+                "distance_km": round(km) if km is not None else None
+            }
+
+    # 1. Live data.gov.in rates (state-wide records are filtered to nearby districts only)
     if _price_service.api_key:
         try:
-            direct, state_wide, rep_date = _price_service.fetch_live_prices(resolved_state, resolved_dist, norm_crop)
-            for r in (direct or state_wide or []):
-                m_raw = r.get("market", "")
-                m_clean = clean_market_name(m_raw)
-                if not m_clean:
-                    continue
-                try:
-                    modal = float(r.get("modal_price", 0))
-                    if modal > 0:
-                        r_date = r.get("arrival_date", today_str)
-                        if m_clean not in market_latest or _parse_d(r_date) >= _parse_d(market_latest[m_clean]["arrival_date"]):
-                            market_latest[m_clean] = {
-                                "market": m_clean,
-                                "market_hi": MARKET_HI_MAP.get(m_clean, m_clean + " मंडी"),
-                                "district": r.get("district", resolved_dist),
-                                "modal_price": modal,
-                                "arrival_date": r_date
-                            }
-                except (ValueError, TypeError):
-                    continue
+            direct, state_wide, _ = _price_service.fetch_live_prices(resolved_state, resolved_dist, norm_crop)
+            for r in (direct or []) + (state_wide or []):
+                _consider(r)
         except Exception:
             pass
 
-    # 2. Ingest historical records across all cluster districts from local cache
+    # 2. Historical records from the local snapshot
     cache_file = _price_service.ensure_local_cache()
     if os.path.exists(cache_file):
-        try:
-            import csv
-            with open(cache_file, mode="r", encoding="utf-8", errors="ignore") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    r_dist = row.get("district", "").strip()
-                    if r_dist.lower() in cluster_lower:
-                        r_comm = row.get("commodity", "")
-                        if is_commodity_match(norm_crop, r_comm):
-                            m_raw = row.get("market", "")
-                            m_clean = clean_market_name(m_raw)
-                            if not m_clean:
-                                continue
-                            try:
-                                modal = float(row.get("modal_price", 0))
-                                if modal <= 0:
-                                    continue
-                            except (ValueError, TypeError):
-                                continue
-                            r_date = row.get("arrival_date", "").strip()
-                            if m_clean not in market_latest or _parse_d(r_date) > _parse_d(market_latest[m_clean]["arrival_date"]):
-                                market_latest[m_clean] = {
-                                    "market": m_clean,
-                                    "market_hi": MARKET_HI_MAP.get(m_clean, m_clean + " मंडी"),
-                                    "district": r_dist,
-                                    "modal_price": modal,
-                                    "arrival_date": r_date
-                                }
-        except Exception:
-            pass
+        import csv
+        with open(cache_file, mode="r", encoding="utf-8", errors="ignore") as f:
+            for row in csv.DictReader(f):
+                _consider(row)
 
     if not market_latest:
         return json.dumps({
             "status": "not_found",
             "crop": norm_crop,
             "district": district,
-            "message": f"किसान भाई, {district} और आसपास के क्षेत्र में {norm_crop} की कोई हालिया आवक दर्ज नहीं मिली है।"
+            "message": f"{district} और आसपास के क्षेत्र में {norm_crop} की कोई हालिया आवक दर्ज नहीं मिली है।"
         }, ensure_ascii=False)
 
-    sorted_mandis = sorted(market_latest.values(), key=lambda x: x["modal_price"], reverse=True)
-    top_mandi = sorted_mandis[0]
-    low_mandi = sorted_mandis[-1]
-    spread = top_mandi["modal_price"] - low_mandi["modal_price"]
+    # Prefer recent rates (older ones only if too few mandis reported), then the nearest, then sort by rate
+    now = datetime.now()
+    recent = [m for m in market_latest.values()
+              if (now - _parse_arrival_date(m["arrival_date"])).days <= RECENT_WINDOW_DAYS]
+    if len(recent) < NEAREST_MANDI_COUNT:
+        recent = list(market_latest.values())
+    nearest = sorted(recent, key=lambda m: (m["distance_km"] is None, m["distance_km"] or 0))[:NEAREST_MANDI_COUNT]
+    by_rate = sorted(nearest, key=lambda m: m["modal_price"], reverse=True)
+    best = by_rate[0]
 
-    # Locate local mandi if specified by user or in reference district
-    local_mandi = None
-    if resolved_market:
-        res_m_clean = clean_market_name(resolved_market).lower()
-        local_mandi = next((m for m in sorted_mandis if res_m_clean in m["market"].lower()), None)
-    if not local_mandi:
-        local_mandi = next((m for m in sorted_mandis if m["district"].lower() == resolved_dist.lower()), None)
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    crop_display = (lookup_msp(norm_crop) or {}).get("name_hi", norm_crop)
+    place_display = clean_market_name(district)
 
-    local_price = local_mandi["modal_price"] if local_mandi else low_mandi["modal_price"]
-    local_name = local_mandi["market_hi"] if local_mandi else (clean_market_name(district) + " मंडी")
-    effective_spread = top_mandi["modal_price"] - local_price
+    def _spoken(m: Dict[str, Any]) -> str:
+        km = f" (लगभग {m['distance_km']} किमी)" if m["distance_km"] else ""
+        return f"{m['market_hi']}{km} ₹{m['modal_price']:.0f}"
 
-    # Transport freight: ₹15/quintal
-    freight = 15.0
-    net_gain = (effective_spread - freight) * quantity_quintals if effective_spread > freight else 0.0
-
-    # Build clean structured list of nearby reporting mandis
-    nearby_mandis = []
-    for m in sorted_mandis[:5]:
-        nearby_mandis.append({
-            "market": m["market_hi"],
-            "district": m["district"],
-            "modal_price": m["modal_price"],
-            "rate_display": f"₹{m['modal_price']:.0f} प्रति क्विंटल",
-            "arrival_date": m["arrival_date"]
-        })
-
-    # Generate authoritative spoken Hindi summary
-    crop_display = "चना" if norm_crop.lower() in ("gram", "bengal gram", "chana") else norm_crop
-    dist_display = clean_market_name(district)
-
-    if len(sorted_mandis) >= 2 and effective_spread > 20 and local_mandi and local_mandi["market"] != top_mandi["market"]:
-        third_m = next((m for m in sorted_mandis if m["market"] not in (top_mandi["market"], local_mandi["market"])), None)
-        third_part = f", और {third_m['market_hi']} में ₹{third_m['modal_price']:.0f}" if third_m else ""
-        companion_summary_hi = (
-            f"किसान भाई, {dist_display} के आसपास: {top_mandi['market_hi']} में {crop_display} सबसे ऊँचे भाव ₹{top_mandi['modal_price']:.0f}, "
-            f"{local_name} में ₹{local_price:.0f}{third_part} प्रति क्विंटल रहा है। "
-            f"{top_mandi['market_hi']} में ₹{effective_spread:.0f} प्रति क्विंटल अधिक दाम मिल सकता है।"
-        )
-    elif len(sorted_mandis) >= 2 and spread > 20:
-        second_m = sorted_mandis[1]
-        companion_summary_hi = (
-            f"किसान भाई, {dist_display} के आसपास: {top_mandi['market_hi']} में {crop_display} सबसे ऊँचे भाव ₹{top_mandi['modal_price']:.0f} "
-            f"और {second_m['market_hi']} में ₹{second_m['modal_price']:.0f} प्रति क्विंटल रहा है। "
-            f"{top_mandi['market_hi']} में सबसे अच्छा दाम मिल रहा है।"
-        )
-    elif len(sorted_mandis) >= 2:
-        m1 = sorted_mandis[0]["market_hi"]
-        m2 = sorted_mandis[1]["market_hi"]
-        companion_summary_hi = (
-            f"किसान भाई, {dist_display} और आसपास की मंडियों (जैसे {m1} और {m2}) में {crop_display} का भाव लगभग ₹{top_mandi['modal_price']:.0f} "
-            f"प्रति क्विंटल ही चल रहा है, इसलिए कहीं अलग ले जाने पर विशेष बचत नहीं होगी।"
-        )
-    else:
-        companion_summary_hi = (
-            f"किसान भाई, {dist_display} क्षेत्र में केवल {top_mandi['market_hi']} में ही {crop_display} का भाव ₹{top_mandi['modal_price']:.0f} "
-            f"प्रति क्विंटल दर्ज हुआ है। आसपास की अन्य मंडियों में अभी नई आवक दर्ज नहीं हुई है।"
-        )
+    companion_summary_hi = (
+        f"किसान भाई, {place_display} के पास की {len(by_rate)} मंडियों में {crop_display} का भाव: "
+        + ", ".join(_spoken(m) for m in by_rate)
+        + f" प्रति क्विंटल। सबसे ऊँचा भाव {best['market_hi']} में है।"
+    )
 
     return json.dumps({
         "status": "success",
         "crop": norm_crop,
         "district": district,
         "resolved_district": resolved_dist,
-        "reporting_date": top_mandi["arrival_date"],
-        "is_today": (top_mandi["arrival_date"] == today_str),
-        "best_market": top_mandi["market_hi"],
-        "best_price": top_mandi["modal_price"],
-        "local_market": local_name,
-        "local_price": local_price,
-        "price_difference": effective_spread,
-        "net_gain_on_trolley_rs": net_gain,
-        "recommend_travel": effective_spread > 30.0,
-        "nearby_mandis": nearby_mandis,
-        "companion_summary_hi": companion_summary_hi
+        "reporting_date": best["arrival_date"],
+        "is_today": best["arrival_date"] == today_str,
+        "best_market": best["market_hi"],
+        "best_price": best["modal_price"],
+        "price_difference": best["modal_price"] - by_rate[-1]["modal_price"],
+        "distance_note": "Approximate road km between district centres; transport cost not estimated.",
+        "nearby_mandis": [{
+            "market": m["market_hi"],
+            "district": m["district"],
+            "distance_km": m["distance_km"],
+            "modal_price": m["modal_price"],
+            "rate_display": f"₹{m['modal_price']:.0f} प्रति क्विंटल",
+            "arrival_date": m["arrival_date"]
+        } for m in by_rate],
+        "companion_summary_hi": companion_summary_hi,
+        **msp_comparison(norm_crop, best["modal_price"])
     }, ensure_ascii=False)
+
+
+def lookup_msp(norm_crop: str) -> Optional[Dict[str, Any]]:
+    """Returns the 2026-27 MSP entry for a normalized crop name, or None if not notified."""
+    msp_data = {}
+    if os.path.exists(MSP_FILE):
+        with open(MSP_FILE, "r", encoding="utf-8") as f:
+            msp_data = json.load(f).get("2026_27", {})
+    for k, v in msp_data.items():
+        if k.lower() in norm_crop.lower() or norm_crop.lower() in k.lower():
+            return v
+    return None
+
+
+def msp_comparison(norm_crop: str, price: float) -> Dict[str, Any]:
+    """Compares a mandi price against MSP so the agent can warn when the farmer is offered less."""
+    info = lookup_msp(norm_crop)
+    if not info or not price:
+        return {"msp": None, "below_msp": False}
+    msp = float(info["msp"])
+    return {
+        "msp": msp,
+        "below_msp": price < msp,
+        "msp_gap_per_quintal": round(msp - price) if price < msp else 0
+    }
 
 
 # -------------------------------------------------------------------------
@@ -557,18 +582,7 @@ def check_msp_floor(crop: str) -> str:
     Call this ONLY when a farmer asks about MSP, government rate, or minimum guaranteed price.
     """
     norm_crop = CROP_NORM_MAP.get(crop.lower().strip(), crop.strip())
-
-    msp_data = {}
-    if os.path.exists(MSP_FILE):
-        with open(MSP_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            msp_data = data.get("2026_27", {})
-
-    found_info = None
-    for k, v in msp_data.items():
-        if k.lower() in norm_crop.lower() or norm_crop.lower() in k.lower():
-            found_info = v
-            break
+    found_info = lookup_msp(norm_crop)
 
     if not found_info:
         return json.dumps({
