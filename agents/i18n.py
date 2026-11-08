@@ -193,6 +193,6 @@ def t(language: str, key: str, **kwargs) -> str:
 
 
 def stt_language(language: str) -> str:
-    """Prisma STT code: Hindi mode auto-detects Hindi/English so Hinglish works."""
-    language = normalize_language(language)
-    return "en-IN,hi-IN" if language == "hi-IN" else language
+    """Prisma STT code. The API rejects comma-separated codes (e.g. "en-IN,hi-IN") on the
+    default model, so always send one locale; the hi-IN model handles Hinglish speech."""
+    return normalize_language(language)
