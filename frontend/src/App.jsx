@@ -11,7 +11,7 @@ import { LANGUAGES, makeT } from './i18n';
 const readSavedLanguage = () => { try { return localStorage.getItem('agriwatch-language') || 'hi-IN'; } catch { return 'hi-IN'; } };
 
 export default function App() {
-  const { status, isAgentSpeaking, isUserSpeaking, volume, error: voiceError, connect, disconnect } = useLiveKitVoice();
+  const { status, isAgentSpeaking, isUserSpeaking, volume, error: voiceError, transcript, connect, disconnect } = useLiveKitVoice();
   const [activeTab, setActiveTab] = useState('overview');
   const [language, setLanguage] = useState(readSavedLanguage);
   const [inputText, setInputText] = useState('');
@@ -21,6 +21,7 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [lastResult, setLastResult] = useState(null);
   const chatEndRef = useRef(null);
+  const transcriptEndRef = useRef(null);
   const t = makeT(language);
 
   const orbState = status === 'connecting' || isTyping ? 'thinking' : status === 'connected' ? (isAgentSpeaking ? 'speaking' : 'listening') : 'idle';
@@ -28,6 +29,7 @@ export default function App() {
   const today = new Intl.DateTimeFormat(language, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date());
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
+  useEffect(() => { transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [transcript]);
   useEffect(() => {
     document.documentElement.lang = language.split('-')[0];
     document.title = `🌾 AgriWatch · ${t('tagline')}`;
@@ -64,7 +66,11 @@ export default function App() {
     } finally { setIsTyping(false); }
   };
 
-  const handleVoiceToggle = () => status === 'connected' || status === 'connecting' ? disconnect() : connect('agri-room-1', language);
+  const handleVoiceToggle = () => {
+    if (status === 'connected' || status === 'connecting') return disconnect();
+    setActiveTab('voice');  // show the live transcript while the call runs
+    connect('agri-room-1', language);
+  };
   const voiceErrorText = voiceError ? (voiceError.startsWith('err_') ? t(voiceError) : voiceError) : null;
 
   return (
@@ -93,7 +99,7 @@ export default function App() {
             <section className="panel assistant-panel">
               <div className="panel-header"><div><p className="eyebrow">AGRI INTELLIGENCE</p><h2>{activeTab === 'voice' ? t('nav_voice') : activeTab === 'chat' ? t('panel_chat') : t('panel_today')}</h2></div><span className="status-badge"><span /> {t('online')}</span></div>
               {activeTab === 'overview' && <div className="overview-hero"><div className="orb-wrap"><AIOrbCSS state={orbState} volume={volume} size={168} onClick={handleVoiceToggle} /></div><div className="hero-copy"><h3>{t('hero_title')}</h3><p>{t('hero_text')}</p><div className="query-row">{t('quick').map(query => <button key={query} onClick={() => { setActiveTab('chat'); handleSendMessage(query); }}>{query}<ArrowUpRight size={13} /></button>)}</div></div></div>}
-              {activeTab === 'voice' && <div className="voice-view"><AIOrbCSS state={orbState} volume={volume} size={190} onClick={handleVoiceToggle} /><p className="voice-status"><span className={status === 'connected' ? 'pulse' : ''} />{status === 'connected' ? (isAgentSpeaking ? t('voice_replying') : isUserSpeaking ? t('voice_listening') : t('voice_mic_active')) : status === 'connecting' ? t('voice_connecting') : t('voice_tap')}</p></div>}
+              {activeTab === 'voice' && <div className={`voice-view ${transcript.length || status === 'connected' ? 'with-transcript' : ''}`}><AIOrbCSS state={orbState} volume={volume} size={transcript.length || status === 'connected' ? 110 : 190} onClick={handleVoiceToggle} /><p className="voice-status"><span className={status === 'connected' ? 'pulse' : ''} />{status === 'connected' ? (isAgentSpeaking ? t('voice_replying') : isUserSpeaking ? t('voice_listening') : t('voice_mic_active')) : status === 'connecting' ? t('voice_connecting') : t('voice_tap')}</p>{(transcript.length > 0 || status === 'connected') && <div className="transcript" aria-live="polite"><p className="transcript-title">{t('transcript_title')}</p>{transcript.length === 0 && <p className="transcript-empty">{t('transcript_empty')}</p>}{transcript.map(line => <div key={line.id} className={`message ${line.role} ${line.final ? '' : 'partial'}`}><small className="speaker">{line.role === 'user' ? t('you') : t('assistant_label')}</small><div>{line.text}</div></div>)}<div ref={transcriptEndRef} /></div>}</div>}
               {activeTab === 'chat' && <Chat t={t} messages={messages} inputText={inputText} setInputText={setInputText} isTyping={isTyping} handleSendMessage={handleSendMessage} chatEndRef={chatEndRef} lastResult={lastResult} />}
               {voiceErrorText && <div className="error-banner"><AlertCircle size={16} /><span>{voiceErrorText}</span><button onClick={() => disconnect()} aria-label={t('close')}><X size={14} /></button></div>}
             </section>

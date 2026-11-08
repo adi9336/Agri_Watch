@@ -7,6 +7,8 @@ export function useLiveKitVoice() {
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [volume, setVolume] = useState(0.0);
   const [error, setError] = useState(null);
+  // Live transcript of the call: [{ id, role: 'user' | 'assistant', text, final }]
+  const [transcript, setTranscript] = useState([]);
   
   const roomRef = useRef(null);
   const audioElementRef = useRef(null);
@@ -37,6 +39,7 @@ export function useLiveKitVoice() {
     try {
       setStatus('connecting');
       setError(null);
+      setTranscript([]);
 
       // 1. Fetch WebRTC participant access token from FastAPI
       const res = await fetch(`/api/token?room=${encodeURIComponent(roomName)}&language=${encodeURIComponent(language)}`);
@@ -86,6 +89,28 @@ export function useLiveKitVoice() {
         }
       });
 
+      // 5. Live transcripts: the agent publishes both sides on the 'lk.transcription' text-stream
+      // topic, sent under the speaker's identity. Agent turns arrive as one growing stream per
+      // segment; user turns arrive as a fresh full-text stream per update of the same segment.
+      room.registerTextStreamHandler('lk.transcription', async (reader, participantInfo) => {
+        const attrs = reader.info.attributes || {};
+        const id = attrs['lk.segment_id'] || reader.info.id;
+        const role = participantInfo.identity === room.localParticipant.identity ? 'user' : 'assistant';
+        const upsert = (text, final) => setTranscript(prev => {
+          const i = prev.findIndex(line => line.id === id);
+          if (i === -1) return text ? [...prev, { id, role, text, final }] : prev;
+          const next = prev.slice();
+          next[i] = { ...next[i], text, final };
+          return next;
+        });
+        let text = '';
+        for await (const chunk of reader) {
+          text += chunk.trim().startsWith('{') ? (() => { try { return JSON.parse(chunk).text ?? chunk; } catch { return chunk; } })() : chunk;
+          upsert(text, false);
+        }
+        upsert(text, true);
+      });
+
       room.on(RoomEvent.Disconnected, () => {
         console.log('[LiveKit] Room disconnected');
         setStatus('disconnected');
@@ -94,11 +119,11 @@ export function useLiveKitVoice() {
         setVolume(0.0);
       });
 
-      // 5. Connect to LiveKit Cloud Room
+      // 6. Connect to LiveKit Cloud Room
       await room.connect(serverUrl, token);
       console.log('[LiveKit] Connected to room:', room.name);
 
-      // 6. Enable Local Microphone Track
+      // 7. Enable Local Microphone Track
       await room.localParticipant.setMicrophoneEnabled(true);
       console.log('[LiveKit] Microphone track published successfully');
 
@@ -147,6 +172,7 @@ export function useLiveKitVoice() {
     isUserSpeaking,
     volume,
     error,
+    transcript,
     connect,
     disconnect,
     room: roomRef.current,
