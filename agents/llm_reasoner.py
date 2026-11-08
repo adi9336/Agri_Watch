@@ -89,27 +89,21 @@ def get_crop_price_trend_tool(
 def consult_economic_specialist_tool(
     crop: str,
     district: str,
-    query_type: Optional[str] = "holding_strategy",
     holding_days: Optional[int] = 30,
-    vehicle_type: Optional[str] = "tractor",
-    quantity_quintals: Optional[float] = 50.0,
+    quantity_quintals: Optional[float] = None,
     state: Optional[str] = None
 ) -> str:
     """
-    Summons the Specialized Economic & Holding Strategy Sub-Agent for deep holding storage ROI and vehicle freight calculations.
-    Call this ONLY when a farmer explicitly asks:
-    - Whether they should hold/store crop in a warehouse/godown vs sell now (e.g. 'माल रोक कर बेचूँ या अभी?', 'वेयरहाउस में रखने का फायदा होगा या नुकसान?', 'स्टोर करने का खर्चा बताओ').
-    - For vehicle-specific freight or transport profit calculations (e.g. 'ट्रैक्टर से ले जाऊँ तो कितना बचेगा?', 'पिकअप या गाड़ी का भाड़ा जोड़कर बताओ').
-    - For deep financial calculations (e.g. 'पूरा हिसाब बताओ', 'विस्तार से नफा-नुकसान समझाओ').
-    Do NOT call this for regular fast price discovery.
+    Hold-or-sell advisor. Call this ONLY when the farmer asks whether to store/hold the crop
+    or sell now, or about warehouse/godown storage cost (e.g. 'माल रोक कर बेचूँ या अभी?',
+    'वेयरहाउस में रखने का फायदा होगा?'). Pass holding_days if the farmer said how long
+    (e.g. 2 months = 60), and quantity_quintals only if the farmer said it.
     """
     return consult_economic_specialist(
         crop=crop,
         district=district,
-        query_type=query_type or "holding_strategy",
         holding_days=holding_days or 30,
-        vehicle_type=vehicle_type or "tractor",
-        quantity_quintals=quantity_quintals or 50.0,
+        quantity_quintals=quantity_quintals,
         state=state
     )
 
@@ -134,7 +128,7 @@ TOOLS (answer only what was asked; never add MSP or other mandis unprompted):
 - Where to sell / nearby or other mandis / compare -> compare_mandi_arbitrage_tool. It returns the 5 nearest mandis sorted by rate; read them out with approx km (you may use companion_summary_hi). Never estimate transport cost or profit. Never say "no mandi found" if the tool returned prices.
 - MSP / सरकारी भाव -> check_msp_floor_tool.
 - Rising/falling, trend, past week/month prices -> get_crop_price_trend_tool. Give the range and overall change.
-- Hold vs sell now, warehouse cost, vehicle/freight full calculation -> consult_economic_specialist_tool; summarise its companion_summary_hi.
+- Hold vs sell now, storage/warehouse cost -> consult_economic_specialist_tool; summarise its companion_summary_hi, keep its caution that the trend is not guaranteed, and never promise a profit. Transport or freight cost questions: say you cannot estimate transport cost.
 
 MISSING INFO: Place but no crop (and none in session context) -> ask which crop, no tool. Crop but no place (and none in context) -> ask for district or mandi, no tool.
 FOLLOW-UPS: Fill anything missing from [सत्र संदर्भ] (active crop/district). Never re-ask a crop that is already in context. E.g. after "Lucknow chana", "और गेहूं?" = wheat in Lucknow; "और कटनी में?" = same crop in Katni; "आसपास की मंडी?" = compare tool with the context crop.
@@ -273,6 +267,8 @@ def llm_reasoner_node(state: AgentState) -> Dict[str, Any]:
                     detected_intent = "MSP"
                 elif "trend" in t_name:
                     detected_intent = "TREND"
+                elif "economic" in t_name:
+                    detected_intent = "HOLDING"
                 elif "price" in t_name:
                     detected_intent = "PRICE"
 

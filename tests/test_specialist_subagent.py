@@ -1,8 +1,8 @@
 """
 Unit Tests for Agri_watch Specialized Economic & Holding Sub-Agent
 Verifies Progressive Disclosure pattern:
-1. Deterministic storage holding ROI math
-2. Vehicle freight calculations
+1. Holding cost arithmetic and robust trend estimation
+2. Hold-or-sell decisions and their guard rails (thin data, perishables)
 3. LangGraph autonomous delegation to the specialist on explicit farmer demand
 """
 
@@ -20,10 +20,11 @@ if PARENT_DIR not in sys.path:
 
 from agents.graph import get_agriwatch_graph
 from agents.state import AgentState
+from datetime import datetime, timedelta
 from agents.specialists.economic_advisor import (
     evaluate_holding_strategy,
-    evaluate_vehicle_arbitrage,
-    run_economic_specialist
+    holding_cost_per_qtl,
+    theil_sen
 )
 
 
@@ -32,19 +33,32 @@ class TestSpecialistSubAgent(unittest.TestCase):
         # Test holding calculation on Wheat in Jhansi
         res = evaluate_holding_strategy(crop="Wheat", district="Jhansi", holding_days=30, quantity_quintals=50.0)
         self.assertIn(res.get("status"), ["success", "partial"])
-        self.assertIn(res.get("decision"), ["HOLD", "SELL_NOW", "NEUTRAL"])
+        self.assertIn(res.get("decision"), ["HOLD", "SELL_NOW", "NEUTRAL", "NO_FORECAST"])
         self.assertIn("holding_cost_per_qtl", res)
         self.assertIn("companion_summary_hi", res)
         # Check that voice response contains relevant keywords
         spoken = res["companion_summary_hi"]
         self.assertTrue(any(w in spoken for w in ["वेयरहाउस", "खर्च", "फसल", "मंडी", "बेचना"]))
 
-    def test_vehicle_arbitrage_math(self):
-        # Test tractor load calculation
-        res = evaluate_vehicle_arbitrage(crop="Wheat", district="Jhansi", vehicle_type="tractor", load_quintals=50.0)
-        self.assertIn("companion_summary_hi", res)
-        spoken = res["companion_summary_hi"]
-        self.assertTrue(len(spoken) > 10)
+    def test_holding_cost_components(self):
+        cost = holding_cost_per_qtl(price=3000.0, holding_days=45)
+        self.assertEqual(cost["warehouse_rent"], 12.0)    # 2 started months x ₹6
+        self.assertEqual(cost["handling"], 10.0)
+        self.assertEqual(cost["storage_loss"], 22.5)      # 0.5%/month x 1.5 months x ₹3000
+        self.assertAlmostEqual(cost["interest"], 25.9, places=1)  # 7%/yr x 45/365 x ₹3000
+        self.assertAlmostEqual(cost["total"], 70.4, places=1)
+
+    def test_theil_sen_ignores_outlier(self):
+        start = datetime(2026, 9, 1)
+        series = [(start + timedelta(days=i), 2000.0 + 10 * i) for i in range(10)]
+        series[5] = (series[5][0], 5000.0)                # one bad variety report
+        trend = theil_sen(series)
+        self.assertAlmostEqual(trend["slope"], 10.0, delta=1.0)
+        self.assertGreaterEqual(trend["agreement"], 0.7)
+
+    def test_perishable_crop_never_holds(self):
+        res = evaluate_holding_strategy(crop="Onion", district="Nashik", holding_days=30)
+        self.assertEqual(res.get("decision"), "NO_FORECAST")
 
     def test_langgraph_invokes_specialist_on_holding_query(self):
         graph = get_agriwatch_graph()

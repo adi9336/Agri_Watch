@@ -34,7 +34,13 @@ CROP_NORM_MAP = {
     "moong": "Green Gram", "मूँग": "Green Gram", "मूंग": "Green Gram",
     "matar": "Peas(Dry)", "मटर": "Peas(Dry)",
     "pyaz": "Onion", "प्याज": "Onion", "onion": "Onion",
-    "alu": "Potato", "आलू": "Potato", "potato": "Potato"
+    "alu": "Potato", "आलू": "Potato", "potato": "Potato",
+    "soybean": "Soyabean", "soyabean": "Soyabean", "soya": "Soyabean", "सोयाबीन": "Soyabean",
+    "maize": "Maize", "makka": "Maize", "corn": "Maize", "मक्का": "Maize",
+    "groundnut": "Groundnut", "moongphali": "Groundnut", "peanut": "Groundnut", "मूंगफली": "Groundnut", "मूँगफली": "Groundnut",
+    "urad": "Black Gram(Urad)", "उड़द": "Black Gram(Urad)", "black gram": "Black Gram(Urad)",
+    "masur": "Masur Dal(Lentil)", "lentil": "Masur Dal(Lentil)", "मसूर": "Masur Dal(Lentil)",
+    "barley": "Barley(Jau)", "jau": "Barley(Jau)", "जौ": "Barley(Jau)"
 }
 
 # Common Indic district mapping to English APMC database keys
@@ -732,29 +738,26 @@ def get_crop_price_trend(
 
 
 # -------------------------------------------------------------------------
-# Tool 5: Consult Economic Specialist (Progressive Disclosure - Deep Holding/Freight)
+# Tool 5: Hold-or-Sell Advisor (Progressive Disclosure - only on explicit storage questions)
 # -------------------------------------------------------------------------
 @traceable(name="Specialist:consult_economic_specialist", run_type="tool")
 def consult_economic_specialist(
     crop: str,
     district: str,
-    query_type: str = "holding_strategy",
     holding_days: int = 30,
-    vehicle_type: str = "tractor",
-    quantity_quintals: float = 50.0,
+    quantity_quintals: Optional[float] = None,
     state: Optional[str] = None
 ) -> str:
     """
-    Summons the Specialized Economic Sub-Agent for deep holding storage ROI and vehicle freight logistics.
-    Invoked ONLY on explicit demand when a farmer asks whether to store/hold or for detailed vehicle calculations.
+    Decides whether storing a crop for holding_days is likely to beat selling today,
+    from the recent price trend versus warehouse rent, handling, storage loss and interest.
+    Invoked ONLY when a farmer explicitly asks about holding, storing or warehouse costs.
     """
     from agents.specialists.economic_advisor import run_economic_specialist
     res = run_economic_specialist(
-        query_type=query_type,
         crop=crop,
         district=district,
         holding_days=holding_days,
-        vehicle_type=vehicle_type,
         quantity_quintals=quantity_quintals,
         state=state
     )
@@ -768,7 +771,7 @@ try:
     compare_mandi_arbitrage_tool = llm.function_tool(description="Compare prices across nearby mandis.")(compare_mandi_arbitrage)
     check_msp_floor_tool = llm.function_tool(description="Look up official Government MSP floor rate for a crop.")(check_msp_floor)
     get_crop_price_trend_tool = llm.function_tool(description="Analyzes historical price movement, trend direction, and multi-day/monthly price ranges.")(get_crop_price_trend)
-    consult_economic_specialist_tool = llm.function_tool(description="Deep holding ROI, warehouse storage fees, and vehicle-specific freight calculations.")(consult_economic_specialist)
+    consult_economic_specialist_tool = llm.function_tool(description="Hold-or-sell advice: recent price trend versus warehouse storage cost.")(consult_economic_specialist)
     LIVEKIT_TOOLS = [
         get_crop_price_tool,
         compare_mandi_arbitrage_tool,
