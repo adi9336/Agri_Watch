@@ -29,6 +29,8 @@ def generate_participant_token(room_name: str = "agri-room-1", identity: str = "
         .with_identity(identity)
         .with_name(name)
         .with_grants(api.VideoGrants(room_join=True, room=room_name))
+        .with_room_config(api.RoomConfiguration(
+            agents=[api.RoomAgentDispatch(agent_name="agri_watch")]))
         .to_jwt()
     )
     return token
