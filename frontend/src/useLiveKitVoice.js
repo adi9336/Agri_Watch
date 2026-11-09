@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 
+const AUDIO_CAPTURE = { autoGainControl: true, echoCancellation: true, noiseSuppression: true };
+const MIC_PREF_KEY = 'agriwatch-microphone';
+const readMicPref = () => { try { return localStorage.getItem(MIC_PREF_KEY) || 'default'; } catch { return 'default'; } };
+
 export function useLiveKitVoice() {
   const [status, setStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'connected' | 'error'
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
@@ -9,6 +13,9 @@ export function useLiveKitVoice() {
   const [error, setError] = useState(null);
   // Live transcript of the call: [{ id, role: 'user' | 'assistant', text, final }]
   const [transcript, setTranscript] = useState([]);
+  // Microphones the browser can see, and the one the call is using
+  const [micDevices, setMicDevices] = useState([]);
+  const [activeMicId, setActiveMicId] = useState(readMicPref);
   
   const roomRef = useRef(null);
   const audioElementRef = useRef(null);
@@ -54,11 +61,7 @@ export function useLiveKitVoice() {
       const room = new Room({
         adaptiveStream: true,
         dynacast: true,
-        audioCaptureDefaults: {
-          autoGainControl: true,
-          echoCancellation: true,
-          noiseSuppression: true,
-        }
+        audioCaptureDefaults: AUDIO_CAPTURE
       });
       roomRef.current = room;
 
@@ -111,6 +114,33 @@ export function useLiveKitVoice() {
         upsert(text, true);
       });
 
+      // 6. Follow microphone changes. On Chrome the library does not move the call when the
+      // system default mic changes or the active mic is unplugged, so the call would keep
+      // sending silence from the old device. Re-acquire the mic whenever the device list changes.
+      const refreshMics = async () => {
+        const mics = (await Room.getLocalDevices('audioinput', false)).filter(d => d.deviceId);
+        setMicDevices(mics);
+        return mics;
+      };
+      room.on(RoomEvent.MediaDevicesChanged, async () => {
+        const mics = await refreshMics();
+        const active = room.getActiveDevice('audioinput') || 'default';
+        const stillPresent = mics.some(d => d.deviceId === active);
+        if (active !== 'default' && stillPresent) return;  // a specifically chosen mic is still there
+        const target = stillPresent ? active : 'default';
+        try {
+          const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+          await track?.restartTrack({ ...AUDIO_CAPTURE, deviceId: target });
+          setActiveMicId(target);
+          console.log('[LiveKit] Microphone changed; call now uses', target);
+        } catch (e) {
+          console.warn('[LiveKit] Could not switch to the new microphone:', e);
+        }
+      });
+      room.on(RoomEvent.ActiveDeviceChanged, (kind, deviceId) => {
+        if (kind === 'audioinput') setActiveMicId(deviceId);
+      });
+
       room.on(RoomEvent.Disconnected, () => {
         console.log('[LiveKit] Room disconnected');
         setStatus('disconnected');
@@ -119,12 +149,17 @@ export function useLiveKitVoice() {
         setVolume(0.0);
       });
 
-      // 6. Connect to LiveKit Cloud Room
+      // 7. Connect to LiveKit Cloud Room
       await room.connect(serverUrl, token);
       console.log('[LiveKit] Connected to room:', room.name);
 
-      // 7. Enable Local Microphone Track
-      await room.localParticipant.setMicrophoneEnabled(true);
+      // 8. Enable the microphone, preferring the one the farmer picked last time if it is still plugged in
+      const preferred = readMicPref();
+      const available = await refreshMics();
+      const micId = available.some(d => d.deviceId === preferred) ? preferred : 'default';
+      await room.localParticipant.setMicrophoneEnabled(true, { ...AUDIO_CAPTURE, deviceId: micId });
+      await refreshMics();  // labels become readable once permission is granted
+      setActiveMicId(room.getActiveDevice('audioinput') || micId);
       console.log('[LiveKit] Microphone track published successfully');
 
       setStatus('connected');
@@ -155,6 +190,20 @@ export function useLiveKitVoice() {
     }
   }, []);
 
+  // Farmer picks a microphone: switch the live call to it and remember it for next time
+  const selectMic = useCallback(async (deviceId) => {
+    try { localStorage.setItem(MIC_PREF_KEY, deviceId); } catch {}
+    setActiveMicId(deviceId);
+    const room = roomRef.current;
+    if (!room) return;
+    try {
+      await room.switchActiveDevice('audioinput', deviceId);
+    } catch (e) {
+      console.warn('[LiveKit] Could not switch microphone:', e);
+      setError('err_mic_busy');
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     if (roomRef.current) {
       roomRef.current.disconnect();
@@ -173,6 +222,9 @@ export function useLiveKitVoice() {
     volume,
     error,
     transcript,
+    micDevices,
+    activeMicId,
+    selectMic,
     connect,
     disconnect,
     room: roomRef.current,
