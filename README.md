@@ -333,7 +333,7 @@ flowchart TD
     FB --> FBC{"Is a crop mentioned<br/>or remembered?"}
     FBC -- No --> FBQ["Ask: 'Which crop?'"]
     FBC -- "Yes, asking about MSP" --> FBM["Read out the MSP"]
-    FBC -- "Yes, asking a price" --> FBP["Read out a mandi price<br/>(Jhansi if no place was named)"]
+    FBC -- "Yes, asking a price" --> FBP["Read out the mandi price,<br/>or ask for the place,<br/>or say it isn't in the record"]
 
     RQ1 --> OUT{"Did the farmer<br/>talk or type?"}
     RQ2 --> OUT
@@ -410,9 +410,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Take the farmer's sentence"] --> B{"Does it contain an off-topic word?<br/>weather, rain, pest, medicine,<br/>fertiliser, cricket, election…"}
+    A["Take the farmer's sentence"] --> B{"Does it contain an off-topic word<br/>(weather, rain, pest, fertiliser,<br/>cricket, election…) and no market word<br/>like price, rate or mandi?"}
     B -- Yes --> B1["Reply: 'I only help with mandi prices,<br/>nearby mandis and MSP'"]
-    B -- No --> C{"Three words or fewer,<br/>starting with 'yes', 'ok',<br/>'right' or 'thanks'?"}
+    B -- No --> C{"Is every word in the message<br/>just 'yes', 'ok', 'right'<br/>or 'thanks'?"}
     C -- Yes --> C1["Reply: 'Sure! Another crop or mandi?'"]
     C -- No --> D{"Three words or fewer,<br/>and a greeting such as<br/>namaste, vanakkam, sat sri akal?"}
     D -- Yes --> D1["Greet back and ask<br/>which crop or mandi"]
@@ -582,14 +582,16 @@ flowchart TD
 flowchart TD
     A["The AI could not answer"] --> B{"Is a crop word in the sentence,<br/>or a crop remembered<br/>from earlier?"}
     B -- No --> B1["Ask: 'Which crop?'"]
-    B -- Yes --> C["Look for a known district name<br/>in the sentence (Jhansi if none)"]
+    B -- Yes --> C["Look for a known district name<br/>in the sentence, or use the one<br/>remembered from earlier"]
     C --> D{"Does the sentence mention<br/>MSP or the government price?"}
     D -- Yes --> D1["Look up the MSP"]
     D1 -- "Found" --> D3["Read out the MSP"]
-    D1 -- "Crop has no MSP" --> D2["Known issue: it still reads out<br/>a default figure of ₹2,275"]
-    D -- No --> E["Look up the price"]
+    D1 -- "Crop has no MSP" --> D2["Say: 'No MSP is announced<br/>for this crop'"]
+    D -- No --> P{"Is a place known?"}
+    P -- No --> P1["Ask: 'Which district or mandi?'"]
+    P -- Yes --> E["Look up the price"]
     E -- "Found" --> E2["Read out the mandi price"]
-    E -- "Nothing found" --> E1["Known issue: it still reads out<br/>a default figure of ₹2,500"]
+    E -- "Nothing found" --> E1["Say: 'The price is not<br/>in the official record'"]
 ```
 
 ### Step 11: Giving the answer back
@@ -656,6 +658,8 @@ flowchart TD
 | Last 4 messages plus the crop and place in use | The AI remembers "and gram?" means the same place | Follow-up questions feel natural | `agents/llm_reasoner.py` |
 | The AI only picks helpers and writes the answer | Numbers come from code, not the AI | AI is good at language, bad at arithmetic and facts | `agents/llm_reasoner.py` |
 | Two automatic retries, then the backup clerk | The farmer still gets an answer when the AI is down | A voice call should never just go silent | `agents/graph.py` |
+| Backup clerk never guesses | It asks for the place, or says "not in the record", instead of using defaults | A made-up price or the wrong district could cost the farmer money | `agents/fallback.py` |
+| Market words override off-topic words | "Will prices rise after the rain?" reaches the AI | Rain and weather often affect prices; blocking them loses real questions | `agents/guardrail.py` |
 | 2,811-mandi list and spelling fixes | 'Rath', 'रॉड' and Hindi names are understood | Farmers name their mandi, not the official district | `agents/tools.py` |
 | Today's rate from the government website first | Then the saved file, then the nearest earlier date | Freshest data first, but always some honest answer | `agents/tools.py` |
 | Always say the date | "Today's rate isn't posted yet; on 24 Sep it was…" | An old price passed off as today's could cost the farmer money | `agents/llm_reasoner.py` |
@@ -700,10 +704,12 @@ flowchart TD
 | The AI is busy (too many requests) | A short wait while it retries, then an answer from the backup clerk |
 | No AI key set | Every real question is answered by the backup clerk |
 | Backup clerk, no crop mentioned | "Which crop?" |
-| Backup clerk, nothing found | Known issue: a default price of ₹2,500 is read out |
-| Backup clerk, place not named | Known issue: Jhansi's price is used |
-| "हाँ, गेहूँ बताओ" ("yes, tell me wheat") | Known issue: treated as just "yes" |
-| "बारिश के बाद भाव बढ़ेगा?" ("will prices rise after the rain?") | Known issue: treated as a weather question |
+| Backup clerk, nothing found | "The price is not in the official record" |
+| Backup clerk, MSP for a crop without one | "No MSP is announced for this crop" |
+| Backup clerk, place not named and none remembered | "Please tell me your district or mandi" |
+| "हाँ, गेहूँ बताओ" ("yes, tell me wheat") | The wheat question is answered normally |
+| "हाँ ठीक है" ("yes, okay") on its own | "Sure! Another crop or mandi?" |
+| "बारिश के बाद भाव बढ़ेगा?" ("will prices rise after the rain?") | Treated as a market question and answered |
 | A cough or "hmm" while the assistant talks | It keeps talking |
 | Farmer interrupts with a real sentence | It stops and listens |
 | Farmer goes silent | Two gentle reminders, then a goodbye |

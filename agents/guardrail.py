@@ -24,6 +24,12 @@ OFF_TOPIC_PATTERNS = {
     "क्रिकेट", "मैच", "चुनाव", "राजनीति", "cricket", "election", "politics"
 }
 
+# Market words: a sentence containing one is a market question even if it mentions rain etc.
+MARKET_WORDS = {
+    "भाव", "दाम", "रेट", "कीमत", "मंडी", "मंडियों", "बेचूँ", "बेचूं", "बेचना", "बेचें", "एमएसपी", "msp",
+    "bhav", "bhaav", "daam", "rate", "price", "prices", "mandi", "sell", "market"
+}
+
 AFFIRMATION_WORDS = {
     "हाँ", "हां", "ठीक", "ठीक है", "अच्छा", "ok", "okay", "theek", "theek hai",
     "ओके", "राइट", "ओके राइट", "सही", "सही है", "अच्छा जी", "हाँजी", "जी", "शुक्रिया", "धन्यवाद"
@@ -46,7 +52,7 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
 
     # 1. Scope Guardrail: Off-Topic / Out of Scope Check (Tokenized boundary check)
     tokens = set(re.split(r'[\s,।!?;:()"\'-]+', q_lower))
-    if tokens & OFF_TOPIC_PATTERNS:
+    if tokens & OFF_TOPIC_PATTERNS and not tokens & MARKET_WORDS:
         return {
             "intent": "OFF_TOPIC",
             "status": "fast_exit",
@@ -55,8 +61,11 @@ def guardrail_node(state: AgentState) -> Dict[str, Any]:
         }
 
     # 2. Conversational Fillers / Continuation (Prevents looping)
+    # Only when the whole message is agreement ("हाँ, गेहूँ बताओ" is a real question)
     words = q_lower.split()
-    if len(words) <= 3 and any(w in AFFIRMATION_WORDS for w in [q_lower, " ".join(words[:2]), words[0]]):
+    plain_words = [w for w in re.split(r'[\s,।!?.;:]+', q_lower) if w]
+    if plain_words and (" ".join(plain_words) in AFFIRMATION_WORDS
+                        or all(w in AFFIRMATION_WORDS or w in ("है", "hai") for w in plain_words)):
         return {
             "intent": "CONTINUATION",
             "status": "fast_exit",
