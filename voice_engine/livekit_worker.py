@@ -252,6 +252,9 @@ async def entrypoint(ctx: JobContext):
     @session.on("close")
     def _on_session_close(ev: CloseEvent):
         logger.info(f"[+] Agri_watch session closed gracefully (Reason: {ev.reason})")
+        # Leave the room too. Otherwise the agent stays connected but deaf after its goodbye,
+        # and a farmer calling the same room again finds this agent instead of a fresh one.
+        ctx.shutdown(reason=f"session closed: {ev.reason}")
 
     # Start voice session inside the room
     await session.start(agent, room=ctx.room)

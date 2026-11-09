@@ -69,7 +69,9 @@ export default function App() {
   const handleVoiceToggle = () => {
     if (status === 'connected' || status === 'connecting') return disconnect();
     setActiveTab('voice');  // show the live transcript while the call runs
-    connect('agri-room-1', language);
+    // A fresh room per call, so every call gets its own newly dispatched assistant
+    const callId = (crypto.randomUUID?.() || Math.random().toString(36).slice(2)).slice(0, 8);
+    connect(`agri-${callId}`, language);
   };
   const voiceErrorText = voiceError ? (voiceError.startsWith('err_') ? t(voiceError) : voiceError) : null;
 
