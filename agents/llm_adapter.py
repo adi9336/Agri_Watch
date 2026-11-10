@@ -4,6 +4,7 @@ Bridges LiveKit's real-time WebRTC/VAD/STT voice environment with the
 decoupled LangGraph Multi-Agent Cognitive Harness.
 """
 
+import asyncio
 import time
 import logging
 from typing import Any, Optional, Dict
@@ -45,8 +46,9 @@ class LangGraphLLMStream(llm.LLMStream):
             "session_context": self._llm.session_context
         }
 
-        # Invoke the compiled LangGraph state machine
-        result = self._graph.invoke(state_input)
+        # Invoke the compiled LangGraph state machine in a worker thread: its LLM and data
+        # lookups are blocking I/O and would otherwise stall audio and turn handling
+        result = await asyncio.to_thread(self._graph.invoke, state_input)
         self._llm.session_context = result.get("session_context") or {}
         spoken_response = (result.get("spoken_hindi_response") or "").strip()
         if not spoken_response:
