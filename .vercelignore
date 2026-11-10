@@ -1,0 +1,25 @@
+# Secrets never leave this machine; Vercel gets them as environment variables
+.env
+.env.*
+*.env
+*.pem
+*.key
+
+# Not needed to build or serve the site
+.git
+.venv
+venv
+__pycache__
+*.pyc
+frontend/node_modules
+frontend/dist
+tests
+graphify-out
+scratch
+*.log
+*.wav
+*.mp3
+*.pcm
+
+# Uploaded compressed instead (unpacked at runtime by mandi_tracker)
+data/mandi_prices_snapshot.csv

@@ -11,6 +11,9 @@ import sys
 import json
 import csv
 import io
+import gzip
+import shutil
+import tempfile
 import urllib.request
 import urllib.parse
 from datetime import datetime
@@ -25,8 +28,8 @@ ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 
 
 def load_env() -> Dict[str, str]:
-    """Parse local .env file if present."""
-    env_vars = {}
+    """Parse local .env file if present, over the process environment (hosted deploys have no .env)."""
+    env_vars = dict(os.environ)
     if os.path.exists(ENV_PATH):
         with open(ENV_PATH, "r", encoding="utf-8") as f:
             for line in f:
@@ -155,6 +158,16 @@ class MandiPriceService:
         """Ensures the full Agmarknet snapshot dataset is cached locally."""
         if os.path.exists(LOCAL_CACHE_PATH) and os.path.getsize(LOCAL_CACHE_PATH) > 10 * 1024 * 1024:
             return LOCAL_CACHE_PATH
+
+        # Hosted deploys ship the snapshot gzipped (5 MB vs 53 MB); unpack once to a writable temp dir
+        packed = LOCAL_CACHE_PATH + ".gz"
+        if os.path.exists(packed):
+            unpacked = os.path.join(tempfile.gettempdir(), "mandi_prices_snapshot.csv")
+            if not os.path.exists(unpacked):
+                with gzip.open(packed, "rb") as src, open(unpacked + ".part", "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                os.replace(unpacked + ".part", unpacked)
+            return unpacked
 
         os.makedirs(os.path.dirname(LOCAL_CACHE_PATH), exist_ok=True)
         print("[*] Downloading Agmarknet dataset snapshot (50MB)...")

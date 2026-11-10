@@ -6,6 +6,7 @@
 
 # Data & caches (keep small benchmark configs, ignore large dumps)
 data/*.csv
+data/*.csv.gz
 data/*.duckdb
 data/*.sqlite
 *.log
@@ -34,3 +35,5 @@ frontend/node_modules/
 
 graphify-out/cache/
 graphify-out/.*
+.vercel
+.env*
