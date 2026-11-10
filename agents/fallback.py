@@ -83,6 +83,18 @@ def fallback_node(state: AgentState) -> Dict[str, Any]:
 
     price_res = get_crop_price(crop, district)
     data = json.loads(price_res)
+    if data.get("status") == "no_current_price":
+        # Remember crop and place so "nearest mandis" / "MSP" next turn needs no re-asking
+        updated_ctx = {**session_ctx, "crop": crop, "district": district}
+        key = "no_current_price_msp" if data.get("msp_available") else "no_current_price"
+        return {
+            "intent": "PRICE",
+            "spoken_hindi_response": t(language, key, place=district, crop=hindi_crop),
+            "status": "success",
+            "crop": crop,
+            "district": district,
+            "session_context": updated_ctx
+        }
     if data.get("status") != "success":
         return {
             "intent": "PRICE",

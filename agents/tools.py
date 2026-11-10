@@ -40,7 +40,17 @@ CROP_NORM_MAP = {
     "groundnut": "Groundnut", "moongphali": "Groundnut", "peanut": "Groundnut", "मूंगफली": "Groundnut", "मूँगफली": "Groundnut",
     "urad": "Black Gram(Urad)", "उड़द": "Black Gram(Urad)", "black gram": "Black Gram(Urad)",
     "masur": "Masur Dal(Lentil)", "lentil": "Masur Dal(Lentil)", "मसूर": "Masur Dal(Lentil)",
-    "barley": "Barley(Jau)", "jau": "Barley(Jau)", "जौ": "Barley(Jau)"
+    "barley": "Barley(Jau)", "jau": "Barley(Jau)", "जौ": "Barley(Jau)",
+    "jowar": "Jowar", "jowar(sorghum)": "Jowar", "jwar": "Jowar", "sorghum": "Jowar", "ज्वार": "Jowar",
+    "bajra": "Bajra", "pearl millet": "Bajra", "बाजरा": "Bajra",
+    "ragi": "Ragi", "nachni": "Ragi", "mandua": "Ragi", "finger millet": "Ragi", "रागी": "Ragi", "नाचनी": "Ragi",
+    "til": "Sesamum", "sesame": "Sesamum", "sesamum": "Sesamum", "तिल": "Sesamum",
+    "ramtil": "Niger Seed", "niger": "Niger Seed", "nigerseed": "Niger Seed", "रामतिल": "Niger Seed",
+    "sunflower": "Sunflower", "surajmukhi": "Sunflower", "सूरजमुखी": "Sunflower",
+    "cotton": "Cotton", "kapas": "Cotton", "कपास": "Cotton",
+    "copra": "Copra", "khopra": "Copra", "खोपरा": "Copra",
+    "jute": "Jute", "pat": "Jute", "जूट": "Jute", "पटसन": "Jute",
+    "tur": "Red gram", "tuar": "Red gram", "toor": "Red gram", "red gram/arhar/tur(whole)": "Red gram"
 }
 
 # Common Indic district mapping to English APMC database keys
@@ -317,7 +327,19 @@ def get_crop_price(
         except Exception:
             pass
 
-    # 2. Historical & nearest-date database lookup
+    # Today's rate asked but not uploaded: don't pass off an older rate as current,
+    # let the agent offer the nearest mandis or the MSP instead
+    if is_today and not records:
+        msp_info = lookup_msp(norm_crop)
+        return json.dumps({
+            "status": "no_current_price",
+            "crop": norm_crop,
+            "district": district,
+            "msp_available": bool(msp_info),
+            "message": f"{district} मंडी में {norm_crop} का आज का भाव अभी अपलोड नहीं हुआ है।"
+        }, ensure_ascii=False)
+
+    # 2. Historical & nearest-date database lookup (a specific past date was asked)
     if not records:
         hist_records, _ = _price_service.fetch_historical(resolved_state, resolved_dist, norm_crop, target_date=target_date, market=resolved_market)
         records = hist_records

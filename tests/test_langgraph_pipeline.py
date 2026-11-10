@@ -9,19 +9,32 @@ Verifies end-to-end user experience across core voice query types:
 6. Conversational continuity without repetitive loops
 """
 
+import json
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.stdout.reconfigure(encoding='utf-8')
 
 from agents.graph import get_agriwatch_graph
 from agents.state import AgentState
+from agents.tools import get_crop_price, _price_service
 
 
 class TestAgriWatchLangGraph(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.graph = get_agriwatch_graph()
+
+    def test_no_current_price_offers_options(self):
+        # Today's rate not uploaded: no old rate passed off as current; MSP offered only for MSP crops
+        with patch.object(_price_service, "fetch_live_prices", return_value=([], [], None)):
+            wheat = json.loads(get_crop_price("Wheat", "Jhansi"))
+            onion = json.loads(get_crop_price("Onion", "Jhansi"))
+        self.assertEqual(wheat["status"], "no_current_price")
+        self.assertNotIn("modal_price", wheat)
+        self.assertTrue(wheat["msp_available"])
+        self.assertFalse(onion["msp_available"])
 
     def test_greeting_intent(self):
         state: AgentState = {"user_query": "राम राम भैया", "session_context": {}}
@@ -37,7 +50,7 @@ class TestAgriWatchLangGraph(unittest.TestCase):
         self.assertTrue(any(w in resp for w in ["फसल", "किस फसल", "फसल का भाव"]))
 
     def test_price_inquiry_with_data(self):
-        state: AgentState = {"user_query": "झाँसी में गेहूँ का क्या रेट है?", "session_context": {}}
+        state: AgentState = {"user_query": "झाँसी में 24/09/2026 को गेहूँ का क्या रेट था?", "session_context": {}}
         out = self.graph.invoke(state)
         resp = out.get("spoken_hindi_response", "")
         self.assertIn("गेहूँ", resp)
@@ -81,7 +94,7 @@ class TestAgriWatchLangGraph(unittest.TestCase):
 
     def test_nearby_mandis_cluster_breakdown(self):
         # Turn 1: Rath Chana inquiry
-        t1 = self.graph.invoke({"user_query": "राठ मंडी में चने का भाव बताओ", "session_context": {}})
+        t1 = self.graph.invoke({"user_query": "राठ मंडी में 13/09/2026 को चने का भाव बताओ", "session_context": {}})
         r1 = t1.get("spoken_hindi_response", "")
         self.assertTrue(any(rate in r1 for rate in ["6100", "6,100"]))
 

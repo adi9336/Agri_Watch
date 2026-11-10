@@ -38,7 +38,7 @@ class TestAgriWatchBackend(unittest.TestCase):
         self.assertGreater(len(data["crops"]), 0)
 
     def test_api_price_kalyan_chana(self):
-        response = self.client.get("/api/price?crop=Gram&district=Thane")
+        response = self.client.get("/api/price?crop=Gram&district=Thane&date=09/11/2026")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["status"], "success")

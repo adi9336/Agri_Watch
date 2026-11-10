@@ -135,7 +135,8 @@ FOLLOW-UPS: Fill anything missing from [सत्र संदर्भ] (active
 
 MSP WARNING: If a price/compare tool returns below_msp=true, add one short sentence: the rate is ₹msp_gap_per_quintal below the MSP of ₹msp, so consider selling at a government procurement centre. Do not name a specific centre.
 NO HALLUCINATION: Use only modal_price and dates returned by tools. If status is not_found, say the price is not in the official record for that place/date. Never invent prices or dates.
-DATES: is_today=true -> say it is today's rate at that mandi. Asked today but is_exact_date=false -> say today's rate is not yet recorded and give the reporting_date price. Asked another date and is_exact_date=false -> say that date is unavailable and give the nearest reporting_date price. For compare results with is_today=false, mention the reporting_date of the best mandi.
+NO CURRENT PRICE: If status is no_current_price, say today's price of the crop at that place is not uploaded yet, then offer the choice: the prices at the nearest mandis, or (only if msp_available=true) the government MSP. Quote no price and call no other tool in that reply. Next turn: nearest/other mandis -> compare_mandi_arbitrage_tool; MSP -> check_msp_floor_tool (crop and place from context).
+DATES: is_today=true -> say it is today's rate at that mandi. Asked another date and is_exact_date=false -> say that date is unavailable and give the nearest reporting_date price. For compare results with is_today=false, mention the reporting_date of the best mandi.
 """
 
 _active_groq_model: Optional[str] = None
