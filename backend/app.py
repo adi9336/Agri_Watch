@@ -38,7 +38,8 @@ from agents.tools import (
     check_msp_floor,
     get_crop_price_trend,
     DISTRICT_NORM_MAP,
-    CROP_NORM_MAP
+    CROP_NORM_MAP,
+    MSP_FILE
 )
 from mandi_tracker import load_env
 from agents.i18n import LANGUAGES, normalize_language
@@ -108,7 +109,7 @@ def health_check():
     has_gnani = bool(os.getenv("GNANI_API_KEY"))
 
     cache_file = ROOT_DIR / "data" / "mandi_prices_snapshot.csv"
-    cache_ready = cache_file.exists() and cache_file.stat().st_size > 1024 * 1024
+    cache_ready = (cache_file.exists() and cache_file.stat().st_size > 1024 * 1024) or Path(f"{cache_file}.gz").exists()
 
     return {
         "status": "online",
@@ -225,6 +226,16 @@ def get_msp_endpoint(crop: str = Query(..., description="Crop name")):
     """Direct API for Government Minimum Support Price (MSP) lookup."""
     raw_res = check_msp_floor(crop=crop)
     return json.loads(raw_res)
+
+
+@app.get("/api/msp/list")
+def list_msp_endpoint():
+    """All notified MSP crops with their rates, for the dashboard MSP panel."""
+    with open(MSP_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    crops = [{"key": key, "msp": info["msp"], "season": info["season"].split(" ")[0], "rise": info.get("rise")}
+             for key, info in data.get("2026_27", {}).items()]
+    return {"source": data.get("_source", ""), "crops": crops}
 
 
 @app.get("/api/metadata")

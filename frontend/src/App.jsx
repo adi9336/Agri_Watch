@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle, ArrowUpRight, BarChart3, Bell, CheckCircle2, CircleDollarSign,
-  CloudSun, Leaf, MessageSquare, Mic, PhoneCall, PhoneOff, Radio, RefreshCw,
-  Send, ShieldCheck, Sparkles, TrendingUp, Wheat, X
+  AlertCircle, ArrowUpRight, BarChart3, Bell, CheckCircle2, CircleDollarSign, Leaf, MessageSquare,
+  PhoneCall, PhoneOff, Radio, Send, ShieldCheck, Sparkles, TrendingUp, User, Wheat, X
 } from 'lucide-react';
 import { useLiveKitVoice } from './useLiveKitVoice';
 import AIOrbCSS from './components/AIOrbCSS';
-import { LANGUAGES, makeT } from './i18n';
+import { LANGUAGES, makeT, cropName } from './i18n';
 
 const readSavedLanguage = () => { try { return localStorage.getItem('agriwatch-language') || 'hi-IN'; } catch { return 'hi-IN'; } };
 
@@ -20,6 +19,7 @@ export default function App() {
   const [sessionContext, setSessionContext] = useState({});
   const [isTyping, setIsTyping] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [mspCrops, setMspCrops] = useState([]);
   const chatEndRef = useRef(null);
   const transcriptEndRef = useRef(null);
   const t = makeT(language);
@@ -28,6 +28,9 @@ export default function App() {
   const clockTime = () => new Date().toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' });
   const today = new Intl.DateTimeFormat(language, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date());
 
+  useEffect(() => {
+    fetch('/api/msp/list').then(res => res.json()).then(data => setMspCrops(data.crops || [])).catch(() => {});
+  }, []);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
   useEffect(() => { transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [transcript]);
   useEffect(() => {
@@ -80,7 +83,7 @@ export default function App() {
       <div className="ambient ambient-one" /><div className="ambient ambient-two" />
       <header className="topbar">
         <div className="brand"><div className="brand-mark"><Wheat size={18} /></div><div><strong>Agri<span>Watch</span></strong><small>{t('tagline')}</small></div></div>
-        <div className="topbar-meta"><select className="language-select" value={language} onChange={e => changeLanguage(e.target.value)} aria-label={t('language')}>{LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select><div className="live-indicator"><span /> {t('system_active')}</div><div className="weather"><CloudSun size={16} /> 28° <span>{t('city')}</span></div><button className="icon-button" aria-label={t('notifications')}><Bell size={17} /></button><button className="avatar" aria-label={t('profile')}>AK</button></div>
+        <div className="topbar-meta"><select className="language-select" value={language} onChange={e => changeLanguage(e.target.value)} aria-label={t('language')}>{LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select><div className="live-indicator"><span /> {t('system_active')}</div><button className="icon-button" aria-label={t('notifications')}><Bell size={17} /></button><button className="avatar" aria-label={t('profile')}><User size={17} /></button></div>
       </header>
 
       <div className="workspace">
@@ -95,7 +98,8 @@ export default function App() {
         <main className="main-content">
           <div className="page-heading"><div><p className="eyebrow">{today}</p><h1>{t('good_morning')} <span>।</span></h1><p className="subheading">{t('subheading')}</p></div><button onClick={handleVoiceToggle} className={`primary-button ${status === 'connected' ? 'danger' : ''}`}>{status === 'connected' ? <PhoneOff size={16} /> : <PhoneCall size={16} />}{status === 'connected' ? t('end_call') : t('talk_live')}</button></div>
 
-          <section className="stats-grid"><Stat icon={CircleDollarSign} label={t('stat_avg_price')} value="₹ 2,450" note={t('stat_avg_note')} trend="+4.8%" /><Stat icon={TrendingUp} label={t('stat_msp_gap')} value="+₹ 350" note={t('stat_msp_note')} trend={t('stat_good')} positive /><Stat icon={Leaf} label={t('stat_your_crop')} value={t('crop_wheat')} note={t('stat_harvest')} /><Stat icon={CheckCircle2} label={t('stat_reliability')} value="98.4%" note={t('stat_verified')} positive /></section>
+
+          <MspStats t={t} language={language} crops={mspCrops} />
 
           <div className="content-grid">
             <section className="panel assistant-panel">
@@ -105,7 +109,7 @@ export default function App() {
               {activeTab === 'chat' && <Chat t={t} messages={messages} inputText={inputText} setInputText={setInputText} isTyping={isTyping} handleSendMessage={handleSendMessage} chatEndRef={chatEndRef} lastResult={lastResult} />}
               {voiceErrorText && <div className="error-banner"><AlertCircle size={16} /><span>{voiceErrorText}</span><button onClick={() => disconnect()} aria-label={t('close')}><X size={14} /></button></div>}
             </section>
-            <section className="panel market-panel"><div className="panel-header"><div><p className="eyebrow">NEARBY MARKETS</p><h2>{t('nearby_title')}</h2></div><button className="text-button">{t('see_all')} <ArrowUpRight size={14} /></button></div><MarketRow t={t} name={t('mandi_sehore')} crop={t('crop_wheat')} price="₹ 2,450" change="+4.8%" /><MarketRow t={t} name={t('mandi_bhopal')} crop={t('crop_wheat')} price="₹ 2,410" change="+3.2%" /><MarketRow t={t} name={t('mandi_vidisha')} crop={t('crop_gram')} price="₹ 5,860" change="+1.7%" /><div className="market-footer"><ShieldCheck size={14} /> {t('updated_at')}</div></section>
+            <MspPanel t={t} language={language} crops={mspCrops} />
           </div>
         </main>
       </div>
@@ -114,5 +118,26 @@ export default function App() {
 }
 
 function Stat({ icon: Icon, label, value, note, trend, positive }) { return <div className="stat-card"><div className="stat-icon"><Icon size={17} /></div><p>{label}</p><strong>{value}</strong><small>{note}</small>{trend && <em className={positive ? 'positive' : ''}>{trend}</em>}</div>; }
-function MarketRow({ t, name, crop, price, change }) { return <div className="market-row"><div className="market-symbol"><Wheat size={15} /></div><div><strong>{name}</strong><small>{crop} · {t('todays_price')}</small></div><div className="market-price"><strong>{price}</strong><small>{change}</small></div></div>; }
+
+// Headline MSP facts from the same official list (no location, no invented numbers)
+function MspStats({ t, language, crops }) {
+  if (!crops.length) return null;
+  const rupees = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
+  const find = (key) => crops.find(c => c.key === key);
+  const wheat = find('Wheat'), paddy = find('Paddy(Common)');
+  const top = crops.filter(c => c.rise).reduce((a, b) => (b.rise > a.rise ? b : a));
+  const cropStat = (c, icon) => c && <Stat icon={icon} label={`${cropName(c.key, language)} · MSP`} value={rupees(c.msp)} note={`${t(`season_${c.season.toLowerCase()}`)} 2026-27 · ${t('per_quintal')}`} trend={c.rise ? `+${rupees(c.rise)}` : null} positive />;
+  return <section className="stats-grid">
+    {cropStat(wheat, CircleDollarSign)}
+    {cropStat(paddy, Leaf)}
+    <Stat icon={TrendingUp} label={t('stat_biggest_rise')} value={`+${rupees(top.rise)}`} note={`${cropName(top.key, language)} · ${rupees(top.msp)}`} positive />
+    <Stat icon={CheckCircle2} label={t('stat_crops_covered')} value="22" note={['rabi', 'kharif', 'commercial'].map(s => t(`season_${s}`)).join(' · ')} trend="PIB" positive />
+  </section>;
+}
+
+// Official MSP of the 22 notified crops, grouped by season; no location involved
+function MspPanel({ t, language, crops }) {
+  const seasons = ['Rabi', 'Kharif', 'Commercial'];
+  return <section className="panel market-panel"><div className="panel-header"><div><p className="eyebrow">MSP 2026-27</p><h2>{t('msp_title')}</h2></div></div><p className="msp-note">{t('msp_note')}</p><div className="msp-list">{seasons.map(season => { const rows = crops.filter(c => c.season === season); return rows.length > 0 && <div key={season}><p className="msp-season">{t(`season_${season.toLowerCase()}`)}</p>{rows.map(c => <div key={c.key} className="market-row"><div className="market-symbol"><Wheat size={15} /></div><div><strong>{cropName(c.key, language)}</strong></div><div className="market-price"><strong>₹{Number(c.msp).toLocaleString('en-IN')}</strong><small>{t('per_quintal')}</small></div></div>)}</div>; })}</div><div className="market-footer"><ShieldCheck size={14} /> {t('msp_source')}</div></section>;
+}
 function Chat({ t, messages, inputText, setInputText, isTyping, handleSendMessage, chatEndRef, lastResult }) { return <div className="chat-wrap"><div className="messages">{messages.map((msg, i) => <div key={i} className={`message ${msg.role}`}><div>{msg.key ? t(msg.key) : msg.text}</div><small>{msg.time || t('now')}</small></div>)}{isTyping && <div className="message assistant typing">{t('typing')}</div>}<div ref={chatEndRef} /></div>{lastResult && <div className="result-strip"><div><strong>{lastResult.crop} · {lastResult.district}</strong><small>{lastResult.market}</small></div><b>₹{Number(lastResult.modal_price).toLocaleString('en-IN')}<small>{t('per_quintal')}</small></b></div>}<form className="chat-input" onSubmit={e => { e.preventDefault(); handleSendMessage(); }}><input value={inputText} onChange={e => setInputText(e.target.value)} placeholder={t('input_placeholder')} /><button disabled={!inputText.trim() || isTyping} aria-label={t('send')}><Send size={16} /></button></form></div>; }
