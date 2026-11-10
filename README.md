@@ -1,3 +1,38 @@
+# 🌾 AgriWatch: Solution Pitch
+
+**Live app:** **[agri-watch-eight.vercel.app](https://agri-watch-eight.vercel.app)** · Built for the Gnani.ai Great Indian AI Internship Challenge
+
+### The problem
+Most Indian farmers sell their harvest without knowing the day's fair price. The government publishes daily mandi prices and the official MSP (Minimum Support Price), but in English, in tables and online. For a farmer at the mandi gate, that information is out of reach, so the trader's first offer often decides the price.
+
+### The solution
+**AgriWatch is a voice assistant farmers can simply talk to, in their own language.** A farmer asks, *"गाज़ियाबाद में चावल का आज का भाव क्या है?"*, and hears the answer within seconds: *"आज गाज़ियाबाद (हापूर मंडी) में चावल का भाव ₹4504 प्रति क्विंटल है।"*
+
+- **10 Indian languages:** Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Kannada, Malayalam, Punjabi and English. Both the voice and the whole screen switch.
+- **Live mandi prices** from official government data (data.gov.in / Agmarknet).
+- **Below-MSP warning**, using the official 2026-27 MSP list for all 22 notified crops.
+- **The 5 nearest mandis**, ranked by best rate.
+- **Hold-or-sell advice:** weighs storage cost against the price trend.
+- **Honest by design:** if today's price isn't uploaded yet, it says so and offers nearby mandis or the MSP instead. Every number comes from a government source, never from the AI.
+
+### Gnani AI models: what we use, and how
+| Gnani model | What it does in AgriWatch | How it is applied and implemented |
+|---|---|---|
+| **Gnani Prisma**, speech-to-text (`vachana-stt-v3`) | Turns the farmer's spoken question into text in their language | Runs inside the LiveKit voice agent (`voice_engine/livekit_worker.py`) through the official `livekit-plugins-gnani` plugin. The language the farmer picks in the app is passed into the call and mapped to one Prisma locale (`hi-IN`, `mr-IN`, … in `agents/i18n.py`). Audio is 16 kHz, and Silero VAD detects when the farmer stops speaking before each utterance is sent for recognition. |
+| **Gnani Timbre v2.5**, text-to-speech | Speaks every reply back in a natural Indian voice | Configured as the agent's voice (`model="timbre-v2.5"`, voice **Pranav**, `language` = the farmer's language). It voices the greeting, "checking the records" fillers while data loads, the answer itself and the inactivity check, in all 10 languages. The demo video also uses Timbre for the narrator (**Kaveri**) and the farmer (**Deepak**). |
+
+### How a question flows
+**Farmer speaks** → LiveKit (real-time call) → Silero VAD → **Gnani Prisma** (speech → text) → LangGraph agent (guardrail → Groq LLM choosing a price, MSP, nearby-mandi or hold-or-sell tool → backup path if the LLM is down) → official data → **Gnani Timbre v2.5** (text → speech) → **farmer hears the answer**.
+
+### Where it runs
+- **Website and API** on **Vercel**, Mumbai region: [agri-watch-eight.vercel.app](https://agri-watch-eight.vercel.app). This covers the dashboard, the MSP list and text chat in 10 languages.
+- **The voice agent** is a long-running LiveKit worker (`run_local.sh`), because Vercel functions are short-lived. Voice calls on the website connect when the worker is running.
+
+### Why it matters
+It lets a farmer check the rate, spot a below-MSP offer and find a better mandi **before** selling, using only their voice and their own language. No reading, no typing and no English needed.
+
+---
+
 # 🌾 Agri_watch - Sovereign Indic Agricultural Voice Intelligence Agent
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
@@ -521,7 +556,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["Crop from the AI"] --> B["Understand the crop name"]
-    B --> C{"Is it in the government's<br/>2026-27 MSP list? (14 crops)"}
+    B --> C{"Is it in the government's<br/>2026-27 MSP list? (all 22 crops)"}
     C -- Yes --> D["Give the MSP and the season"]
     C -- No --> E["Report: 'No MSP is announced<br/>for this crop'"]
 ```
@@ -664,7 +699,7 @@ flowchart TD
 | Today's rate from the government website first | Then the saved file, then the nearest earlier date | Freshest data first, but always some honest answer | `agents/tools.py` |
 | Always say the date | "Today's rate isn't posted yet; on 24 Sep it was…" | An old price passed off as today's could cost the farmer money | `agents/llm_reasoner.py` |
 | Below-MSP check in code | Every price result says whether it is below MSP | The farmer learns they may be underpaid, without asking | `agents/tools.py` |
-| Official 2026-27 MSP list | 14 crops with their government rates | Old MSP figures would give wrong warnings | `data/msp_benchmarks.json` |
+| Official 2026-27 MSP list | All 22 MSP crops with their government rates | Old MSP figures would give wrong warnings | `data/msp_benchmarks.json` |
 | District map locations, worked out once | 560 district centres saved in a file | Lets "nearest mandis" work anywhere in India, not just a few districts | `scripts/build_district_coords.py` |
 | 5 nearest, then sorted by rate | No transport cost is shown | Too many unknowns (vehicle, load, tolls) to give a trustworthy cost | `agents/tools.py` |
 | Hold-or-sell uses a robust trend and a cautious estimate | One odd report can't flip the advice | Wrong "hold" advice costs the farmer real money | `agents/specialists/economic_advisor.py` |
