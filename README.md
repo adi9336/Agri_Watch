@@ -1,6 +1,10 @@
 # 🌾 AgriWatch: Solution Pitch
 
-**Live app:** **[agri-watch-eight.vercel.app](https://agri-watch-eight.vercel.app)** · Built for the Gnani.ai Great Indian AI Internship Challenge
+**🌐 Live app:** **[agri-watch-eight.vercel.app](https://agri-watch-eight.vercel.app)**
+
+**🎬 Demo video (2 min):** **[Watch on Google Drive](https://drive.google.com/file/d/1WOFM06ZWQADyjP9vZlHh9ov3pcFgDlvs/view?usp=sharing)**. Live Hindi and Marathi voice calls, powered by Gnani Prisma and Timbre.
+
+Built for the Gnani.ai Great Indian AI Internship Challenge
 
 ### The problem
 Most Indian farmers sell their harvest without knowing the day's fair price. The government publishes daily mandi prices and the official MSP (Minimum Support Price), but in English, in tables and online. For a farmer at the mandi gate, that information is out of reach, so the trader's first offer often decides the price.
